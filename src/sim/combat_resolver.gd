@@ -78,6 +78,7 @@ func resolve_hit(attack: Dictionary, context: Dictionary = {}) -> Dictionary:
 			result["effect"] = {
 				"id": effect_id,
 				"duration_ticks": duration,
+				"strength_percent": penetration_percent,
 				"pauses_windup": true,
 				"grants_control_immunity": duration >= GameConfig.CONTROL_TRIGGER_TICKS,
 				"immunity_ticks": GameConfig.CONTROL_IMMUNITY_TICKS if duration >= GameConfig.CONTROL_TRIGGER_TICKS else 0,

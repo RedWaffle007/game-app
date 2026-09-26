@@ -12,6 +12,8 @@ Phase 0 has started with a pure-logic simulation foundation:
 - shield recharge gated by both 180 ticks and two contact actions
 - one exchange path for basic attacks, shields, move effects, and simultaneous hits
 - integer arena positions with walled Knockback and Pull resolution
+- Stagger pushback and full combatant reset between rounds
+- playable Flourish actions with no combat utility or charge use
 - combo scaling after Stagger or Uppercut, with a three-hit airborne limit
 - timed-effect replacement and deterministic damage-over-time ticks
 - a deterministic build-vs-build smoke simulator that advances timed effects

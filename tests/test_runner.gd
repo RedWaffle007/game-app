@@ -24,6 +24,7 @@ func _init() -> void:
 	_test_combatant_state()
 	_test_combat_exchange()
 	_test_spatial_effects()
+	_test_stagger_push_and_round_reset()
 	_test_combo_flow()
 	_test_example_builds_and_simulation()
 	if failures == 0:
@@ -281,6 +282,19 @@ func _test_combat_exchange() -> void:
 	exchange.resolve(lethal_fighter, life_fighter, {"kind": "move", "id": "heavy_smash"}, {"kind": "move", "id": "jab"})
 	_expect(life_fighter.hp == 0 and lethal_fighter.hp == 0, "simultaneous Lifesteal does not revive after net lethal damage")
 
+	var flourisher := CombatantStateScript.new("flourisher", [{"id": "front_kick", "charges": 0, "damage": 0, "effect": "", "flourish": true}], 100, -100)
+	var spectator := CombatantStateScript.new("spectator", [], 0, 100)
+	_expect(flourisher.activate_shield(), "flourisher can enter shield cooldown")
+	flourisher.shield.whiff()
+	for ignored in ShieldRuntime.COOLDOWN_TICKS:
+		flourisher.tick()
+	var flourish_result: Dictionary = exchange.resolve(flourisher, spectator, {"kind": "move", "id": "front_kick"}, {})
+	_expect(flourish_result["first_hit"].is_empty() and spectator.hp == GameConfig.MAX_HP, "Flourish produces no hit or damage")
+	_expect(flourisher.x == -100 and spectator.x == 100 and flourisher.shield.contacts_left == 2, "Flourish has no movement or shield contact")
+	_expect(flourisher.moves["front_kick"]["charges"] == 0 and flourisher.windup_move_id == "", "Flourish spends no charge and completes its action")
+	flourish_result = exchange.resolve(flourisher, spectator, {"kind": "move", "id": "front_kick"}, {})
+	_expect(flourish_result["first_hit"].is_empty(), "Flourish remains usable without charges")
+
 
 func _test_spatial_effects() -> void:
 	var exchange := CombatExchangeScript.new(catalog)
@@ -323,6 +337,42 @@ func _test_spatial_effects() -> void:
 	var second := CombatantStateScript.new("second", pull_move, 0, 250)
 	exchange.resolve(first, second, {"kind": "move", "id": "jab"}, {"kind": "move", "id": "jab"})
 	_expect(first.x == -20 and second.x == 20, "simultaneous Pull settles without overlap or order bias")
+
+
+func _test_stagger_push_and_round_reset() -> void:
+	var exchange := CombatExchangeScript.new(catalog)
+	var stagger_move := [{"id": "jab", "charges": 1, "damage": 100, "effect": "stagger", "flourish": false}]
+	var attacker := CombatantStateScript.new("attacker", stagger_move, 0, -100)
+	var defender := CombatantStateScript.new("defender", [{"id": "straight_punch", "charges": 2, "damage": 50, "effect": "", "flourish": false}], 0, 100)
+	_expect(defender.begin_move("straight_punch"), "defender begins a wind-up before Stagger")
+	exchange.resolve(attacker, defender, {"kind": "move", "id": "jab"}, {})
+	_expect(defender.x == 160 and defender.control_ticks_left == 36, "full Stagger pushes slightly and applies its control duration")
+	_expect(defender.windup_move_id == "straight_punch", "Stagger keeps the defender's wind-up paused")
+
+	attacker = CombatantStateScript.new("attacker", stagger_move, 0, -100)
+	defender = CombatantStateScript.new("defender", [], 50, 100)
+	_expect(defender.activate_shield(), "partial Stagger test starts with an active parry")
+	exchange.resolve(attacker, defender, {"kind": "move", "id": "jab"}, {})
+	_expect(defender.x == 130 and defender.control_ticks_left == 18, "partial Stagger scales push and duration")
+
+	attacker = CombatantStateScript.new("attacker", stagger_move, 0, -100)
+	defender = CombatantStateScript.new("defender", [], 100, 100)
+	_expect(defender.activate_shield(), "full Stagger block starts with an active parry")
+	exchange.resolve(attacker, defender, {"kind": "move", "id": "jab"}, {})
+	_expect(defender.x == 100 and defender.control_ticks_left == 0, "fully blocked Stagger neither moves nor controls")
+
+	var round_fighter := CombatantStateScript.new("round", [{"id": "jab", "charges": 3, "damage": 100, "effect": "", "flourish": false}], 100, 250)
+	var starting_snapshot: Dictionary = round_fighter.snapshot()
+	_expect(round_fighter.begin_move("jab"), "round fighter spends a charge")
+	round_fighter.finish_windup()
+	_expect(round_fighter.activate_shield(), "round fighter opens its shield")
+	round_fighter.shield.absorb_hit()
+	round_fighter.apply_incoming_hit({"damage": 200, "effect": {"id": "burn", "total_damage": 30, "duration_ticks": 180}})
+	round_fighter.apply_incoming_hit({"damage": 0, "effect": {"id": "stagger", "duration_ticks": 36, "grants_control_immunity": true, "immunity_ticks": 90}})
+	round_fighter.x = 777
+	_expect(round_fighter.snapshot() != starting_snapshot, "round state changed before reset")
+	round_fighter.reset_round()
+	_expect(round_fighter.snapshot() == starting_snapshot, "new round restores HP, position, charges, effects, controls, and shield")
 
 
 func _test_combo_flow() -> void:

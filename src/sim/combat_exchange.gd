@@ -65,13 +65,15 @@ func _prepare(fighter: RefCounted, action: Dictionary) -> Dictionary:
 		var move_id: String = str(action.get("id", ""))
 		if fighter.begin_move(move_id):
 			var move: Dictionary = fighter.moves[move_id]
+			if bool(move.get("flourish", false)):
+				return {"kind": "flourish", "id": move_id}
 			var move_data: Dictionary = resolver.catalog.moves.get(move_id, {})
 			return {"damage": int(move["damage"]), "effect": str(move["effect"]), "kind": kind, "id": move_id, "launch": bool(move_data.get("launch", false))}
 	return {}
 
 
 func _resolve_one(attack: Dictionary, attacker: RefCounted, defender: RefCounted) -> Dictionary:
-	if attack.is_empty():
+	if attack.is_empty() or str(attack.get("kind", "")) == "flourish":
 		return {}
 	if not defender.can_receive_hit():
 		return {}

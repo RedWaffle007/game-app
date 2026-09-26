@@ -4,6 +4,7 @@ extends RefCounted
 var name: String
 var hp := GameConfig.MAX_HP
 var x := 0
+var round_start_x := 0
 var moves: Dictionary = {}
 var move_order: Array[String] = []
 var active_effects: Dictionary = {}
@@ -21,11 +22,10 @@ var shield: ShieldRuntime
 func _init(fighter_name: String, computed_moves: Array, shield_strength: int = 0, start_x: int = 0) -> void:
 	name = fighter_name
 	x = clampi(start_x, -GameConfig.ARENA_HALF_WIDTH, GameConfig.ARENA_HALF_WIDTH)
+	round_start_x = x
 	shield = ShieldRuntime.new(shield_strength)
 	for raw_move: Variant in computed_moves:
 		var move: Dictionary = raw_move
-		if bool(move.get("flourish", false)):
-			continue
 		var stored := move.duplicate(true)
 		stored["max_charges"] = int(move["charges"])
 		moves[move["id"]] = stored
@@ -38,6 +38,9 @@ func begin_move(move_id: String) -> bool:
 	var move: Dictionary = moves[move_id]
 	if airborne_ticks_left > 0 and not bool(move.get("air_allowed", true)):
 		return false
+	if bool(move.get("flourish", false)):
+		windup_move_id = move_id
+		return true
 	if int(move["charges"]) <= 0:
 		return false
 	move["charges"] = int(move["charges"]) - 1
@@ -69,6 +72,24 @@ func land() -> void:
 			combo_source = "stagger"
 		else:
 			_clear_combo()
+
+
+func reset_round() -> void:
+	hp = GameConfig.MAX_HP
+	x = round_start_x
+	for move_id: String in move_order:
+		var move: Dictionary = moves[move_id]
+		move["charges"] = int(move["max_charges"])
+		moves[move_id] = move
+	active_effects.clear()
+	last_used_move_id = ""
+	windup_move_id = ""
+	control_ticks_left = 0
+	control_immunity_ticks_left = 0
+	airborne_ticks_left = 0
+	airborne_hits_taken = 0
+	_clear_combo()
+	shield.reset_round()
 
 
 func can_receive_hit() -> bool:
@@ -175,6 +196,7 @@ func snapshot() -> Dictionary:
 		"name": name,
 		"hp": hp,
 		"x": x,
+		"round_start_x": round_start_x,
 		"moves": moves.duplicate(true),
 		"move_order": move_order.duplicate(),
 		"active_effects": active_effects.duplicate(true),

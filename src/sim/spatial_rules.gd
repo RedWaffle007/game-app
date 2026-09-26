@@ -28,7 +28,7 @@ func resolve(first_x: int, second_x: int, first_hit: Dictionary, second_hit: Dic
 func _target_x(attacker_x: int, defender_x: int, application: Dictionary) -> Dictionary:
 	var result := {"x": defender_x, "bounced": false}
 	var effect_id: String = str(application.get("id", ""))
-	if effect_id != "knockback" and effect_id != "pull":
+	if effect_id != "knockback" and effect_id != "pull" and effect_id != "stagger":
 		return result
 	if attacker_x == defender_x:
 		return result
@@ -40,11 +40,15 @@ func _target_x(attacker_x: int, defender_x: int, application: Dictionary) -> Dic
 	var distance := 0
 	if effect_id == "knockback":
 		distance = maxi(0, GameConfig.LONG_RANGE - gap) * strength / 100
-	else:
+	elif effect_id == "pull":
 		distance = maxi(0, gap - GameConfig.CLOSE_RANGE) * strength / 100
-	var desired_x := defender_x + side * distance if effect_id == "knockback" else defender_x - side * distance
+	else:
+		distance = GameConfig.STAGGER_PUSH_DISTANCE * strength / 100
+	var desired_x := defender_x - side * distance if effect_id == "pull" else defender_x + side * distance
 	var edge := GameConfig.ARENA_HALF_WIDTH
-	if desired_x > edge:
+	if effect_id == "stagger":
+		result["x"] = clampi(desired_x, -edge, edge)
+	elif desired_x > edge:
 		result["x"] = edge - (desired_x - edge)
 		result["bounced"] = true
 	elif desired_x < -edge:

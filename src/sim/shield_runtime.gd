@@ -67,6 +67,14 @@ func _start_recharge() -> void:
 	contacts_left = REQUIRED_CONTACTS
 
 
+func reset_round() -> void:
+	cooldown_ticks_left = 0
+	contacts_left = 0
+	active_ticks_left = 0
+	recovery_ticks_left = 0
+	active = false
+
+
 func snapshot() -> Dictionary:
 	return {
 		"strength": strength,
