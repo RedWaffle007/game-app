@@ -17,6 +17,7 @@ Phase 0 has started with a pure-logic simulation foundation:
 - catalog ranges and vertical hitboxes for checked attack attempts
 - deterministic Fireball travel, parries, ducking, and projectile cancellation
 - fixed-tick walk, jump/double jump, dash, and duck movement with arena spacing
+- a single match tick with a six-tick button buffer and deterministic action order
 - combo scaling after Stagger or Uppercut, with a three-hit airborne limit
 - timed-effect replacement and deterministic damage-over-time ticks
 - a deterministic build-vs-build smoke simulator that advances timed effects
@@ -27,10 +28,13 @@ close/long range targets are tuning defaults in `GameConfig`. The smoke
 simulator supplies landed attacks; `CombatExchange.resolve_attempts()` checks
 range and hurtboxes for gameplay calls. `MovementRules.advance()` accepts both
 fighters' integer directions and jump/dash/duck presses once per tick; a touch
-control layer is still pending.
+control layer is still pending. `MatchSimulation.advance()` combines movement,
+buffered button actions, checked hits, projectiles, and effect timers. Inputs
+may include an `action` with kind `basic`, `move` (plus `id`), or `shield`;
+new presses replace older buffered presses.
 Uppercut currently uses a 45-tick airborne timer as a balance placeholder.
-Call `CombatExchange.advance_projectiles()` once per simulation tick after
-checked actions to move Fireballs and resolve their contacts.
+The match tick advances projectiles after checked actions, so a Fireball can
+contact a nearby fighter on its launch tick.
 
 Run the tests with Godot 4. The wrapper first performs a compile-only pass so
 parser errors cannot be mistaken for a successful assertion run:

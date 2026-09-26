@@ -44,21 +44,28 @@ func _init(fighter_name: String, computed_moves: Array, shield_strength: int = 0
 
 
 func begin_move(move_id: String) -> bool:
+	if not can_begin_move(move_id):
+		return false
+	var move: Dictionary = moves[move_id]
+	if bool(move.get("flourish", false)):
+		windup_move_id = move_id
+		return true
+	move["charges"] = int(move["charges"]) - 1
+	moves[move_id] = move
+	last_used_move_id = move_id
+	windup_move_id = move_id
+	return true
+
+
+func can_begin_move(move_id: String) -> bool:
 	if control_ticks_left > 0 or ducking or shield.active or shield.recovery_ticks_left > 0 or windup_move_id != "" or not moves.has(move_id):
 		return false
 	var move: Dictionary = moves[move_id]
 	if y > 0 and not bool(move.get("air_allowed", true)):
 		return false
 	if bool(move.get("flourish", false)):
-		windup_move_id = move_id
 		return true
-	if int(move["charges"]) <= 0:
-		return false
-	move["charges"] = int(move["charges"]) - 1
-	moves[move_id] = move
-	last_used_move_id = move_id
-	windup_move_id = move_id
-	return true
+	return int(move["charges"]) > 0
 
 
 func can_basic_attack() -> bool:

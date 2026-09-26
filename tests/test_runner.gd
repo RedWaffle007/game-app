@@ -3,6 +3,7 @@ extends SceneTree
 const CombatantStateScript := preload("res://src/sim/combatant_state.gd")
 const CombatExchangeScript := preload("res://src/sim/combat_exchange.gd")
 const MovementRulesScript := preload("res://src/sim/movement_rules.gd")
+const MatchSimulationScript := preload("res://src/sim/match_simulation.gd")
 
 var catalog: FighterCatalog
 var validator: BuildValidator
@@ -30,6 +31,7 @@ func _init() -> void:
 	_test_hit_geometry()
 	_test_projectiles()
 	_test_movement()
+	_test_match_ticks_and_buffer()
 	_test_example_builds_and_simulation()
 	if failures == 0:
 		print("PASS: %d checks" % checks)
@@ -619,6 +621,69 @@ func _test_movement() -> void:
 	_expect(first.jumps_used == 2 and first.y > GameConfig.LAUNCH_HURTBOX_BOTTOM_Y, "launched fighter retains its double jump")
 	first.reset_round()
 	_expect(first.vertical_speed == 0 and first.jumps_used == 0 and first.dash_ticks_left == 0, "round reset clears movement state")
+
+
+func _test_match_ticks_and_buffer() -> void:
+	var first := CombatantStateScript.new("first", [], 0, -60)
+	var second := CombatantStateScript.new("second", [], 100, 0)
+	var match_state := MatchSimulationScript.new(first, second, catalog)
+	var step: Dictionary = match_state.advance({"action": {"kind": "basic"}}, {"action": {"kind": "shield"}})
+	_expect(step["tick"] == 1 and step["second_shield"], "match tick opens a shield before simultaneous attacks")
+	_expect(step["attacks"]["first_hit"]["damage"] == 0 and second.hp == GameConfig.MAX_HP, "same-tick parry blocks a basic hit")
+	_expect(not second.shield.active and second.shield.cooldown_ticks_left == GameConfig.SHIELD_COOLDOWN_TICKS - 1, "match tick advances shield timers after contact")
+	var fireball := [{"id": "fireball", "charges": 1, "damage": 100, "effect": "", "flourish": false}]
+	first = CombatantStateScript.new("first", fireball, 0, -40)
+	second = CombatantStateScript.new("second", [], 0, 40)
+	match_state = MatchSimulationScript.new(first, second, catalog)
+	step = match_state.advance({"action": {"kind": "move", "id": "fireball"}}, {})
+	_expect(step["attacks"]["first_hit"].is_empty() and step["projectiles"]["first_hit"]["damage"] == 100, "match tick launches then advances a nearby Fireball")
+	_expect(first.active_projectile.is_empty() and second.hp == GameConfig.MAX_HP - 100, "same-tick projectile contact is committed once")
+
+	first = CombatantStateScript.new("first", [], 0, -60)
+	second = CombatantStateScript.new("second", [], 0, 0)
+	match_state = MatchSimulationScript.new(first, second, catalog)
+	first.control_ticks_left = 2
+	step = match_state.advance({"action": {"kind": "basic"}}, {})
+	_expect(step["attacks"]["first_hit"].is_empty() and match_state.remaining[0] == 5, "early basic press waits in the six-tick buffer")
+	match_state.advance()
+	step = match_state.advance()
+	_expect(step["attacks"]["first_hit"]["damage"] == GameConfig.BASIC_ATTACK_DAMAGE and match_state.pending[0].is_empty(), "buffered attack fires when control ends")
+	_expect(second.hp == GameConfig.MAX_HP - GameConfig.BASIC_ATTACK_DAMAGE, "buffered hit commits exactly once")
+	match_state.advance()
+	_expect(second.hp == GameConfig.MAX_HP - GameConfig.BASIC_ATTACK_DAMAGE, "consumed buffer does not repeat the attack")
+
+	first = CombatantStateScript.new("first", [], 0, -60)
+	second = CombatantStateScript.new("second", [], 0, 0)
+	match_state = MatchSimulationScript.new(first, second, catalog)
+	first.control_ticks_left = 7
+	match_state.advance({"action": {"kind": "basic"}}, {})
+	for ignored in 5:
+		match_state.advance()
+	_expect(match_state.pending[0].is_empty() and match_state.remaining[0] == 0, "unavailable input expires after exactly six ticks")
+	match_state.advance()
+	match_state.advance()
+	_expect(second.hp == GameConfig.MAX_HP, "expired input does not fire after control ends")
+
+	var jab := [{"id": "jab", "charges": 1, "damage": 100, "effect": "", "flourish": false}]
+	first = CombatantStateScript.new("first", jab, 0, -60)
+	second = CombatantStateScript.new("second", [], 0, 0)
+	match_state = MatchSimulationScript.new(first, second, catalog)
+	first.control_ticks_left = 2
+	match_state.advance({"action": {"kind": "basic"}}, {})
+	match_state.advance({"action": {"kind": "move", "id": "jab"}}, {})
+	step = match_state.advance()
+	_expect(step["attacks"]["first_hit"]["damage"] == 100 and first.moves["jab"]["charges"] == 0, "new button press replaces an older buffered press")
+
+	first = CombatantStateScript.new("first", [], 0, -60)
+	second = CombatantStateScript.new("second", [], 0, 0)
+	match_state = MatchSimulationScript.new(first, second, catalog)
+	match_state.advance({"horizontal": 1, "action": {"kind": "basic"}}, {})
+	var expected: Dictionary = match_state.snapshot()
+	var replay := MatchSimulationScript.new(CombatantStateScript.new("first", [], 0, -60), CombatantStateScript.new("second", [], 0, 0), catalog)
+	replay.advance({"horizontal": 1, "action": {"kind": "basic"}}, {})
+	_expect(replay.snapshot() == expected, "same tick inputs produce identical match snapshots")
+	match_state.reset_round()
+	_expect(match_state.tick_index == 0 and match_state.pending[0].is_empty() and match_state.first.hp == GameConfig.MAX_HP, "round reset clears tick count, buffer, and fighter state")
 
 
 func _test_example_builds_and_simulation() -> void:
