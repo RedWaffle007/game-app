@@ -24,6 +24,7 @@ func _init() -> void:
 	_test_combatant_state()
 	_test_combat_exchange()
 	_test_spatial_effects()
+	_test_combo_flow()
 	_test_example_builds_and_simulation()
 	if failures == 0:
 		print("PASS: %d checks" % checks)
@@ -84,6 +85,11 @@ func _test_build_validation() -> void:
 		{"id": "low_sweep", "power": 0}, {"id": "sword_slash", "power": 0},
 	]}
 	_expect(_has_error(validator.validate(flourish_effect), "Flourish cannot carry"), "Flourishes reject effects")
+	var air_rules := validator.validate({"shield": 380, "moves": [
+		{"id": "low_sweep", "power": 25}, {"id": "jab", "power": 25},
+		{"id": "straight_punch", "power": 25}, {"id": "front_kick", "power": 25},
+	]})
+	_expect(air_rules["valid"] and not air_rules["moves"][0]["air_allowed"] and air_rules["moves"][1]["air_allowed"], "air use restriction comes from catalog data")
 
 
 func _test_charges() -> void:
@@ -211,6 +217,8 @@ func _test_combatant_state() -> void:
 	}})
 	_expect(fighter.control_ticks_left == 12, "Stagger prevents actions for its scaled duration")
 	_expect(not fighter.begin_move("straight_punch"), "a controlled fighter cannot begin a move")
+	fighter.apply_incoming_hit({"damage": 0, "effect": {"id": "stagger", "duration_ticks": 0}})
+	_expect(fighter.control_ticks_left == 12, "zero-duration control does not erase an active control timer")
 	for ignored in 12:
 		fighter.tick()
 	_expect(fighter.control_ticks_left == 0 and fighter.control_immunity_ticks_left == 90, "control immunity lasts 1.5 seconds after control")
@@ -315,6 +323,68 @@ func _test_spatial_effects() -> void:
 	var second := CombatantStateScript.new("second", pull_move, 0, 250)
 	exchange.resolve(first, second, {"kind": "move", "id": "jab"}, {"kind": "move", "id": "jab"})
 	_expect(first.x == -20 and second.x == 20, "simultaneous Pull settles without overlap or order bias")
+
+
+func _test_combo_flow() -> void:
+	var exchange := CombatExchangeScript.new(catalog)
+	var attacker := CombatantStateScript.new("attacker", [
+		{"id": "jab", "charges": 1, "damage": 100, "effect": "stagger", "flourish": false},
+		{"id": "straight_punch", "charges": 1, "damage": 100, "effect": "", "flourish": false},
+	])
+	var defender := CombatantStateScript.new("defender", [])
+	var opener: Dictionary = exchange.resolve(attacker, defender, {"kind": "move", "id": "jab"}, {})
+	_expect(opener["first_hit"]["damage"] == 100 and defender.combo_source == "stagger", "Stagger opener deals full damage and starts a combo")
+	var followup: Dictionary = exchange.resolve(attacker, defender, {"kind": "move", "id": "straight_punch"}, {})
+	_expect(followup["first_hit"]["damage"] == 90 and followup["first_hit"]["combo_percent"] == 90, "first Stagger follow-up is scaled by ten percent")
+	followup = exchange.resolve(attacker, defender, {"kind": "basic"}, {})
+	_expect(followup["first_hit"]["damage"] == 16 and followup["first_hit"]["combo_percent"] == 80, "subsequent combo hits continue scaling")
+	for ignored in 36:
+		defender.tick()
+	followup = exchange.resolve(attacker, defender, {"kind": "basic"}, {})
+	_expect(followup["first_hit"]["damage"] == 20 and defender.combo_source == "", "Stagger combo resets when control ends")
+
+	attacker = CombatantStateScript.new("attacker", [{"id": "uppercut", "charges": 1, "damage": 100, "effect": "", "flourish": false}])
+	defender = CombatantStateScript.new("defender", [
+		{"id": "low_sweep", "charges": 1, "damage": 50, "effect": "", "flourish": false, "air_allowed": false},
+		{"id": "jab", "charges": 1, "damage": 50, "effect": "", "flourish": false, "air_allowed": true},
+	])
+	opener = exchange.resolve(attacker, defender, {"kind": "move", "id": "uppercut"}, {})
+	_expect(opener["first_hit"]["damage"] == 100 and defender.airborne_ticks_left == GameConfig.UPPERCUT_AIRBORNE_TICKS, "Uppercut opens an airborne combo")
+	_expect(defender.control_ticks_left == 0 and defender.begin_move("jab"), "launched fighter keeps air control and can use an air move")
+	defender.finish_windup()
+	_expect(not defender.begin_move("low_sweep"), "ground-only move cannot start while airborne")
+	for expected_damage in [18, 16, 14]:
+		followup = exchange.resolve(attacker, defender, {"kind": "basic"}, {})
+		_expect(followup["first_hit"]["damage"] == expected_damage, "airborne combo follow-up uses the next scaling step")
+	followup = exchange.resolve(attacker, defender, {"kind": "basic"}, {})
+	_expect(followup["first_hit"].is_empty() and defender.airborne_hits_taken == 3, "fourth airborne follow-up cannot connect")
+	defender.land()
+	followup = exchange.resolve(attacker, defender, {"kind": "basic"}, {})
+	_expect(followup["first_hit"]["damage"] == 20 and defender.combo_source == "", "landing restores normal damage and hit eligibility")
+
+	attacker = CombatantStateScript.new("attacker", [{"id": "uppercut", "charges": 1, "damage": 100, "effect": "", "flourish": false}])
+	defender = CombatantStateScript.new("defender", [])
+	exchange.resolve(attacker, defender, {"kind": "move", "id": "uppercut"}, {})
+	for ignored in GameConfig.UPPERCUT_AIRBORNE_TICKS:
+		defender.tick()
+	_expect(defender.airborne_ticks_left == 0 and defender.combo_source == "", "airborne combo also expires after its tick duration")
+
+	attacker = CombatantStateScript.new("attacker", [
+		{"id": "uppercut", "charges": 1, "damage": 100, "effect": "", "flourish": false},
+		{"id": "jab", "charges": 1, "damage": 100, "effect": "stagger", "flourish": false},
+	])
+	defender = CombatantStateScript.new("defender", [])
+	exchange.resolve(attacker, defender, {"kind": "move", "id": "uppercut"}, {})
+	exchange.resolve(attacker, defender, {"kind": "move", "id": "jab"}, {})
+	defender.land()
+	followup = exchange.resolve(attacker, defender, {"kind": "basic"}, {})
+	_expect(defender.combo_source == "stagger" and followup["first_hit"]["damage"] == 16, "Stagger continues an Uppercut combo after landing")
+
+	attacker = CombatantStateScript.new("attacker", [])
+	defender = CombatantStateScript.new("defender", [])
+	exchange.resolve(attacker, defender, {"kind": "basic"}, {})
+	followup = exchange.resolve(attacker, defender, {"kind": "basic"}, {})
+	_expect(followup["first_hit"]["damage"] == 20 and defender.combo_source == "", "ordinary hits never start a combo")
 
 
 func _test_example_builds_and_simulation() -> void:

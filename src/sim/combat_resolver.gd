@@ -29,6 +29,7 @@ func resolve_hit(attack: Dictionary, context: Dictionary = {}) -> Dictionary:
 
 	var result := {
 		"raw_damage": raw_damage,
+		"combo_index": combo_index,
 		"combo_percent": combo_percent,
 		"damage_before_shield": scaled_damage,
 		"shield_value": shield,

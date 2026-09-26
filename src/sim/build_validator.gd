@@ -67,6 +67,7 @@ func validate(build: Dictionary) -> Dictionary:
 			"effect": effect_id,
 			"cost": cost,
 			"damage": catalog.move_damage(move_id, power),
+			"air_allowed": bool(catalog.moves[move_id]["air"]),
 			"charges": catalog.charges_for_cost(cost),
 			"flourish": power == 0,
 			"wasted_power": maxi(0, power - _max_useful_power(move_id)),

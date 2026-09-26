@@ -11,6 +11,10 @@ var last_used_move_id := ""
 var windup_move_id := ""
 var control_ticks_left := 0
 var control_immunity_ticks_left := 0
+var airborne_ticks_left := 0
+var airborne_hits_taken := 0
+var combo_source := ""
+var combo_hits_taken := 0
 var shield: ShieldRuntime
 
 
@@ -32,6 +36,8 @@ func begin_move(move_id: String) -> bool:
 	if control_ticks_left > 0 or shield.active or shield.recovery_ticks_left > 0 or windup_move_id != "" or not moves.has(move_id):
 		return false
 	var move: Dictionary = moves[move_id]
+	if airborne_ticks_left > 0 and not bool(move.get("air_allowed", true)):
+		return false
 	if int(move["charges"]) <= 0:
 		return false
 	move["charges"] = int(move["charges"]) - 1
@@ -53,6 +59,51 @@ func activate_shield() -> bool:
 
 func finish_windup() -> void:
 	windup_move_id = ""
+
+
+func land() -> void:
+	airborne_ticks_left = 0
+	airborne_hits_taken = 0
+	if combo_source == "uppercut":
+		if control_ticks_left > 0:
+			combo_source = "stagger"
+		else:
+			_clear_combo()
+
+
+func can_receive_hit() -> bool:
+	return airborne_ticks_left == 0 or airborne_hits_taken < GameConfig.MAX_AIRBORNE_COMBO_HITS
+
+
+func combo_index_for_hit() -> int:
+	if combo_source == "stagger" and control_ticks_left > 0:
+		return combo_hits_taken
+	if combo_source == "uppercut" and airborne_ticks_left > 0:
+		return combo_hits_taken
+	return 0
+
+
+## Called after hit resolution with the defender's pre-hit airborne state.
+func register_landed_hit(attack: Dictionary, hit: Dictionary, was_airborne: bool) -> void:
+	if attack.is_empty() or int(hit.get("damage", 0)) <= 0:
+		return
+	var prior_combo_index := int(hit.get("combo_index", 0))
+	if was_airborne:
+		airborne_hits_taken += 1
+	if bool(attack.get("launch", false)):
+		airborne_ticks_left = GameConfig.UPPERCUT_AIRBORNE_TICKS
+		if not was_airborne:
+			airborne_hits_taken = 0
+		combo_source = "uppercut"
+		combo_hits_taken = prior_combo_index + 1
+		return
+	var application: Dictionary = hit.get("effect", {})
+	if str(application.get("id", "")) == "stagger" and int(application.get("duration_ticks", 0)) > 0:
+		if not was_airborne or combo_source != "uppercut":
+			combo_source = "stagger"
+		combo_hits_taken = prior_combo_index + 1
+	elif prior_combo_index > 0:
+		combo_hits_taken = prior_combo_index + 1
 
 
 func current_weaken_percent() -> int:
@@ -80,7 +131,8 @@ func apply_incoming_hit(result: Dictionary) -> void:
 			"burn", "poison", "weaken":
 				EffectRuntime.replace_timed(active_effects, application)
 			"stagger", "shock":
-				_apply_control(application)
+				if int(application.get("duration_ticks", 0)) > 0:
+					_apply_control(application)
 	if bool(result.get("drain_charge", false)):
 		_drain_last_used_move()
 	if bool(result.get("cancel_windup", false)):
@@ -101,6 +153,19 @@ func tick() -> int:
 	hp = maxi(0, hp - timed_damage)
 	control_ticks_left = maxi(0, control_ticks_left - 1)
 	control_immunity_ticks_left = maxi(0, control_immunity_ticks_left - 1)
+	airborne_ticks_left = maxi(0, airborne_ticks_left - 1)
+	if airborne_ticks_left == 0:
+		airborne_hits_taken = 0
+		if combo_source == "uppercut":
+			if control_ticks_left > 0:
+				combo_source = "stagger"
+			else:
+				_clear_combo()
+	if control_ticks_left == 0 and combo_source == "stagger":
+		if airborne_ticks_left > 0:
+			combo_source = "uppercut"
+		else:
+			_clear_combo()
 	shield.tick()
 	return timed_damage
 
@@ -117,6 +182,10 @@ func snapshot() -> Dictionary:
 		"windup_move_id": windup_move_id,
 		"control_ticks_left": control_ticks_left,
 		"control_immunity_ticks_left": control_immunity_ticks_left,
+		"airborne_ticks_left": airborne_ticks_left,
+		"airborne_hits_taken": airborne_hits_taken,
+		"combo_source": combo_source,
+		"combo_hits_taken": combo_hits_taken,
 		"shield": shield.snapshot(),
 	}
 
@@ -145,3 +214,8 @@ func _refund_and_cancel_windup() -> void:
 	move["charges"] = mini(int(move["max_charges"]), int(move["charges"]) + 1)
 	moves[windup_move_id] = move
 	windup_move_id = ""
+
+
+func _clear_combo() -> void:
+	combo_source = ""
+	combo_hits_taken = 0
