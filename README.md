@@ -11,16 +11,18 @@ Phase 0 has started with a pure-logic simulation foundation:
 - integer-only damage, charge, shield, combo, and effect resolution
 - shield recharge gated by both 180 ticks and two contact actions
 - timed-effect replacement and deterministic damage-over-time ticks
-- a basic deterministic build-vs-build smoke simulator
+- a deterministic build-vs-build smoke simulator that advances timed effects
 - a dependency-free headless GDScript test suite
 
-Run the tests with Godot 4:
+Run the tests with Godot 4. The wrapper first performs a compile-only pass so
+parser errors cannot be mistaken for a successful assertion run:
 
 ```sh
-godot --headless --path . --script res://tests/test_runner.gd
+./tests/run_tests.sh
 ```
 
-If the executable is named `godot4`, substitute that name. No editor plugin is required.
+It automatically uses `godot`, `godot4`, or the standard Godot Flatpak. No
+editor plugin is required.
 
 ## Data shape
 

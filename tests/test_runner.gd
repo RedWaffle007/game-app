@@ -1,5 +1,7 @@
 extends SceneTree
 
+const CombatantStateScript := preload("res://src/sim/combatant_state.gd")
+
 var catalog: FighterCatalog
 var validator: BuildValidator
 var resolver: CombatResolver
@@ -18,6 +20,7 @@ func _init() -> void:
 	_test_shield_runtime()
 	_test_effects()
 	_test_timed_effect_replacement()
+	_test_combatant_state()
 	_test_example_builds_and_simulation()
 	if failures == 0:
 		print("PASS: %d checks" % checks)
@@ -164,6 +167,50 @@ func _test_timed_effect_replacement() -> void:
 	_expect(delivered == 30 and not active.has("burn"), "integer tick distribution delivers exact total")
 
 
+func _test_combatant_state() -> void:
+	var build := validator.validate({"shield": 300, "moves": [
+		{"id": "jab", "power": 100}, {"id": "straight_punch", "power": 100},
+		{"id": "front_kick", "power": 0}, {"id": "sword_slash", "power": 0},
+	]})
+	var fighter := CombatantStateScript.new("test", build["moves"])
+	var jab_max: int = fighter.moves["jab"]["max_charges"]
+	_expect(fighter.begin_move("jab"), "a charged move can begin")
+	_expect(fighter.moves["jab"]["charges"] == jab_max - 1, "beginning a move spends one charge")
+	fighter.apply_incoming_hit({"damage": 0, "effect": {}, "drain_charge": true})
+	_expect(fighter.moves["jab"]["charges"] == jab_max - 2, "Charge Drain removes one charge from the most recently used move")
+	fighter.apply_incoming_hit({"damage": 0, "effect": {}, "cancel_windup": true})
+	_expect(fighter.moves["jab"]["charges"] == jab_max - 1 and fighter.windup_move_id == "", "Shock cancellation refunds the wind-up charge")
+
+	fighter.hp = 990
+	fighter.apply_heal(30)
+	_expect(fighter.hp == GameConfig.MAX_HP, "healing never exceeds max HP")
+	fighter.apply_incoming_hit({"damage": 100, "effect": {"id": "poison", "total_damage": 40, "duration_ticks": 480}})
+	var poison_damage := 0
+	for ignored in 480:
+		poison_damage += fighter.tick()
+	_expect(fighter.hp == 860 and poison_damage == 40, "direct and timed damage update HP deterministically")
+
+	fighter.apply_incoming_hit({"damage": 0, "effect": {"id": "weaken", "percent": 20, "duration_ticks": 3}})
+	_expect(fighter.current_weaken_percent() == 20, "Weaken is exposed to outgoing hit resolution")
+	fighter.tick()
+	fighter.tick()
+	fighter.tick()
+	_expect(fighter.current_weaken_percent() == 0, "Weaken expires on its exact tick")
+
+	fighter.apply_incoming_hit({"damage": 0, "effect": {
+		"id": "stagger", "duration_ticks": 12, "grants_control_immunity": true,
+		"immunity_ticks": GameConfig.CONTROL_IMMUNITY_TICKS,
+	}})
+	_expect(fighter.control_ticks_left == 12, "Stagger prevents actions for its scaled duration")
+	_expect(not fighter.begin_move("straight_punch"), "a controlled fighter cannot begin a move")
+	for ignored in 12:
+		fighter.tick()
+	_expect(fighter.control_ticks_left == 0 and fighter.control_immunity_ticks_left == 90, "control immunity lasts 1.5 seconds after control")
+	var snapshot := fighter.snapshot()
+	snapshot["moves"]["jab"]["charges"] = 0
+	_expect(fighter.moves["jab"]["charges"] != 0, "rollback snapshot is a deep copy")
+
+
 func _test_example_builds_and_simulation() -> void:
 	var file := FileAccess.open("res://data/example_builds.json", FileAccess.READ)
 	var builds: Dictionary = JSON.parse_string(file.get_as_text())
@@ -173,6 +220,12 @@ func _test_example_builds_and_simulation() -> void:
 		_expect(result["total_cost"] == 500, "example build '%s' recomputes to 500" % build_name)
 	var duel := DuelSimulator.new(catalog).simulate(builds["balanced"], builds["glass_cannon"])
 	_expect(duel["valid"] and duel["turns"] > 0 and not duel["log"].is_empty(), "example builds can be deterministically simulated")
+	duel = DuelSimulator.new(catalog).simulate(builds["poisoner"], builds["turtle"], 4)
+	var dealt_timed_damage := false
+	for entry: Dictionary in duel["log"]:
+		if int(entry["timed_damage"]) > 0:
+			dealt_timed_damage = true
+	_expect(dealt_timed_damage, "the Poisoner example applies damage over time in simulation")
 
 
 func _has_error(result: Dictionary, fragment: String) -> bool:

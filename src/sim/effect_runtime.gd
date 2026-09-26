@@ -38,3 +38,17 @@ static func tick_timed_damage(active: Dictionary, effect_id: String) -> int:
 		active[effect_id] = effect
 	return damage
 
+
+## Advances a non-damaging timed effect and returns whether it remains active.
+static func tick_duration(active: Dictionary, effect_id: String) -> bool:
+	if not active.has(effect_id):
+		return false
+	var effect: Dictionary = active[effect_id]
+	var duration: int = int(effect.get("duration_ticks", 0))
+	var elapsed := int(effect.get("elapsed_ticks", 0)) + 1
+	if duration <= 0 or elapsed >= duration:
+		active.erase(effect_id)
+		return false
+	effect["elapsed_ticks"] = elapsed
+	active[effect_id] = effect
+	return true
