@@ -10,10 +10,12 @@ var last_used_move_id := ""
 var windup_move_id := ""
 var control_ticks_left := 0
 var control_immunity_ticks_left := 0
+var shield: ShieldRuntime
 
 
-func _init(fighter_name: String, computed_moves: Array) -> void:
+func _init(fighter_name: String, computed_moves: Array, shield_strength: int = 0) -> void:
 	name = fighter_name
+	shield = ShieldRuntime.new(shield_strength)
 	for raw_move: Variant in computed_moves:
 		var move: Dictionary = raw_move
 		if bool(move.get("flourish", false)):
@@ -25,7 +27,7 @@ func _init(fighter_name: String, computed_moves: Array) -> void:
 
 
 func begin_move(move_id: String) -> bool:
-	if control_ticks_left > 0 or not moves.has(move_id):
+	if control_ticks_left > 0 or shield.active or shield.recovery_ticks_left > 0 or windup_move_id != "" or not moves.has(move_id):
 		return false
 	var move: Dictionary = moves[move_id]
 	if int(move["charges"]) <= 0:
@@ -35,6 +37,16 @@ func begin_move(move_id: String) -> bool:
 	last_used_move_id = move_id
 	windup_move_id = move_id
 	return true
+
+
+func can_basic_attack() -> bool:
+	return control_ticks_left == 0 and not shield.active and shield.recovery_ticks_left == 0 and windup_move_id == ""
+
+
+func activate_shield() -> bool:
+	if control_ticks_left > 0 or windup_move_id != "":
+		return false
+	return shield.activate()
 
 
 func finish_windup() -> void:
@@ -87,6 +99,7 @@ func tick() -> int:
 	hp = maxi(0, hp - timed_damage)
 	control_ticks_left = maxi(0, control_ticks_left - 1)
 	control_immunity_ticks_left = maxi(0, control_immunity_ticks_left - 1)
+	shield.tick()
 	return timed_damage
 
 
@@ -101,6 +114,7 @@ func snapshot() -> Dictionary:
 		"windup_move_id": windup_move_id,
 		"control_ticks_left": control_ticks_left,
 		"control_immunity_ticks_left": control_immunity_ticks_left,
+		"shield": shield.snapshot(),
 	}
 
 
@@ -128,4 +142,3 @@ func _refund_and_cancel_windup() -> void:
 	move["charges"] = mini(int(move["max_charges"]), int(move["charges"]) + 1)
 	moves[windup_move_id] = move
 	windup_move_id = ""
-

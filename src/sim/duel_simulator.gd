@@ -2,16 +2,17 @@ class_name DuelSimulator
 extends RefCounted
 
 const CombatantStateScript := preload("res://src/sim/combatant_state.gd")
+const CombatExchangeScript := preload("res://src/sim/combat_exchange.gd")
 
 var catalog: FighterCatalog
 var validator: BuildValidator
-var resolver: CombatResolver
+var exchange: RefCounted
 
 
 func _init(source_catalog: FighterCatalog = null) -> void:
 	catalog = source_catalog if source_catalog != null else FighterCatalog.new()
 	validator = BuildValidator.new(catalog)
-	resolver = CombatResolver.new(catalog)
+	exchange = CombatExchangeScript.new(catalog)
 
 
 ## A deterministic smoke simulation for balance tooling. Fighters alternate legal
@@ -37,17 +38,15 @@ func simulate(
 	while turn < max_turns and fighters[0].hp > 0 and fighters[1].hp > 0:
 		var attacker_index := turn % 2
 		var defender_index := 1 - attacker_index
-		var selection := _next_move(fighters[attacker_index], int(cursors[attacker_index]))
-		var move: Dictionary = selection["move"]
-		if move.is_empty():
-			break
+		var selection := _next_action(fighters[attacker_index], int(cursors[attacker_index]))
+		var action: Dictionary = selection["action"]
 		cursors[attacker_index] = selection["next_cursor"]
-		var context: Dictionary = fighters[defender_index].resolver_context()
-		context["attacker_weakened_percent"] = fighters[attacker_index].current_weaken_percent()
-		var hit := resolver.resolve_hit({"damage": move["damage"], "effect": move["effect"]}, context)
-		fighters[defender_index].apply_incoming_hit(hit)
-		fighters[attacker_index].apply_heal(int(hit["heal"]))
-		fighters[attacker_index].finish_windup()
+		var resolved: Dictionary
+		if attacker_index == 0:
+			resolved = exchange.resolve(fighters[0], fighters[1], action, {})
+		else:
+			resolved = exchange.resolve(fighters[0], fighters[1], {}, action)
+		var hit: Dictionary = resolved["first_hit"] if attacker_index == 0 else resolved["second_hit"]
 		var timed_damage := [0, 0]
 		for ignored in maxi(0, ticks_between_turns):
 			for fighter_index in fighters.size():
@@ -55,8 +54,8 @@ func simulate(
 		log.append({
 			"turn": turn,
 			"attacker": fighters[attacker_index].name,
-			"move": move["id"],
-			"damage": hit["damage"],
+			"move": action.get("id", "basic"),
+			"damage": int(hit.get("damage", 0)),
 			"timed_damage": timed_damage[defender_index],
 			"defender_hp": fighters[defender_index].hp,
 		})
@@ -76,15 +75,13 @@ func simulate(
 
 
 func _make_fighter(fighter_name: String, checked_build: Dictionary) -> RefCounted:
-	return CombatantStateScript.new(fighter_name, checked_build["moves"])
+	return CombatantStateScript.new(fighter_name, checked_build["moves"], checked_build["shield"])
 
 
-func _next_move(fighter: RefCounted, cursor: int) -> Dictionary:
-	if fighter.move_order.is_empty():
-		return {"move": {}, "next_cursor": 0}
+func _next_action(fighter: RefCounted, cursor: int) -> Dictionary:
 	for offset in fighter.move_order.size():
 		var index: int = (cursor + offset) % fighter.move_order.size()
 		var move_id: String = fighter.move_order[index]
-		if fighter.begin_move(move_id):
-			return {"move": fighter.moves[move_id], "next_cursor": (index + 1) % fighter.move_order.size()}
-	return {"move": {}, "next_cursor": cursor}
+		if int(fighter.moves[move_id]["charges"]) > 0:
+			return {"action": {"kind": "move", "id": move_id}, "next_cursor": (index + 1) % fighter.move_order.size()}
+	return {"action": {"kind": "basic"}, "next_cursor": cursor}

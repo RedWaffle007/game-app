@@ -10,6 +10,7 @@ Phase 0 has started with a pure-logic simulation foundation:
 - exact 500 PP build validation with recomputed costs
 - integer-only damage, charge, shield, combo, and effect resolution
 - shield recharge gated by both 180 ticks and two contact actions
+- one exchange path for basic attacks, shields, move effects, and simultaneous hits
 - timed-effect replacement and deterministic damage-over-time ticks
 - a deterministic build-vs-build smoke simulator that advances timed effects
 - a dependency-free headless GDScript test suite

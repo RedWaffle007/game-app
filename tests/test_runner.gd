@@ -1,6 +1,7 @@
 extends SceneTree
 
 const CombatantStateScript := preload("res://src/sim/combatant_state.gd")
+const CombatExchangeScript := preload("res://src/sim/combat_exchange.gd")
 
 var catalog: FighterCatalog
 var validator: BuildValidator
@@ -21,6 +22,7 @@ func _init() -> void:
 	_test_effects()
 	_test_timed_effect_replacement()
 	_test_combatant_state()
+	_test_combat_exchange()
 	_test_example_builds_and_simulation()
 	if failures == 0:
 		print("PASS: %d checks" % checks)
@@ -118,6 +120,11 @@ func _test_shield_runtime() -> void:
 	_expect(shield.activate(), "recharged shield can activate")
 	shield.whiff()
 	_expect(not shield.is_ready(), "a whiff starts punishable recharge")
+	var window := ShieldRuntime.new(100)
+	_expect(window.activate(), "shield can open its active window")
+	for ignored in GameConfig.SHIELD_ACTIVE_TICKS:
+		window.tick()
+	_expect(not window.active and window.recovery_ticks_left == GameConfig.SHIELD_WHIFF_RECOVERY_TICKS, "parry window expires into fixed whiff recovery")
 
 
 func _test_effects() -> void:
@@ -211,6 +218,61 @@ func _test_combatant_state() -> void:
 	_expect(fighter.moves["jab"]["charges"] != 0, "rollback snapshot is a deep copy")
 
 
+func _test_combat_exchange() -> void:
+	var strong := [{"id": "heavy_smash", "charges": 1, "damage": 500, "effect": "", "flourish": false}]
+	var first := CombatantStateScript.new("first", strong)
+	var second := CombatantStateScript.new("second", strong)
+	first.hp = 500
+	second.hp = 500
+	var exchange := CombatExchangeScript.new(catalog)
+	var trade: Dictionary = exchange.resolve(first, second, {"kind": "move", "id": "heavy_smash"}, {"kind": "move", "id": "heavy_smash"})
+	_expect(first.hp == 0 and second.hp == 0, "simultaneous lethal attacks both deal damage")
+	_expect(trade["first_hit"]["damage"] == 500 and trade["second_hit"]["damage"] == 500, "both sides of a trade resolve from pre-hit state")
+	_expect(first.moves["heavy_smash"]["charges"] == 0 and second.moves["heavy_smash"]["charges"] == 0, "both trading moves spend charges")
+
+	var shielded := CombatantStateScript.new("shielded", [], 100)
+	var striker := CombatantStateScript.new("striker", [])
+	_expect(shielded.activate_shield(), "combatant can activate an allocated shield")
+	var blocked: Dictionary = exchange.resolve(striker, shielded, {"kind": "basic"}, {})
+	_expect(blocked["first_hit"]["damage"] == 0 and shielded.hp == GameConfig.MAX_HP, "basic attack is fully absorbed by active shield")
+	_expect(not shielded.shield.active and shielded.shield.cooldown_ticks_left == 180, "first contact consumes the parry")
+	_expect(striker.shield.contacts_left == 0, "contact accounting does not create a cooldown for unused shields")
+	blocked = exchange.resolve(striker, shielded, {"kind": "basic"}, {})
+	_expect(blocked["first_hit"]["damage"] == 20 and shielded.hp == 980, "later hits bypass spent shield")
+
+	var recharger := CombatantStateScript.new("recharger", [], 100)
+	var target := CombatantStateScript.new("target", [])
+	_expect(recharger.activate_shield(), "shield starts ready")
+	recharger.shield.whiff()
+	for ignored in ShieldRuntime.COOLDOWN_TICKS:
+		recharger.tick()
+	_expect(not recharger.shield.is_ready(), "time alone cannot recharge a whiffed shield")
+	exchange.resolve(recharger, target, {"kind": "basic"}, {})
+	exchange.resolve(recharger, target, {"kind": "basic"}, {})
+	_expect(recharger.shield.is_ready(), "two basic attack contacts complete shield recharge")
+
+	var toxic := CombatantStateScript.new("toxic", [{"id": "jab", "charges": 1, "damage": 100, "effect": "poison", "flourish": false}])
+	var victim := CombatantStateScript.new("victim", [])
+	exchange.resolve(toxic, victim, {"kind": "basic"}, {})
+	_expect(not victim.active_effects.has("poison"), "basic attack never triggers a move effect")
+	exchange.resolve(toxic, victim, {"kind": "move", "id": "jab"}, {})
+	_expect(victim.active_effects.has("poison"), "charged move triggers its effect")
+
+	var draining_shield := CombatantStateScript.new("draining_shield", [], 100)
+	var poison_move := CombatantStateScript.new("poison_move", [{"id": "jab", "charges": 1, "damage": 100, "effect": "poison", "flourish": false}])
+	draining_shield.active_effects["poison"] = {"id": "poison", "total_damage": 40, "duration_ticks": 480, "elapsed_ticks": 200}
+	_expect(draining_shield.activate_shield(), "active parry can protect a poisoned fighter")
+	exchange.resolve(poison_move, draining_shield, {"kind": "move", "id": "jab"}, {})
+	_expect(not draining_shield.active_effects.has("poison"), "fully blocked Poison application cleanses existing Poison")
+
+	var life_fighter := CombatantStateScript.new("life", [{"id": "jab", "charges": 1, "damage": 100, "effect": "lifesteal", "flourish": false}])
+	var lethal_fighter := CombatantStateScript.new("lethal", [{"id": "heavy_smash", "charges": 1, "damage": 100, "effect": "", "flourish": false}])
+	life_fighter.hp = 50
+	lethal_fighter.hp = 50
+	exchange.resolve(lethal_fighter, life_fighter, {"kind": "move", "id": "heavy_smash"}, {"kind": "move", "id": "jab"})
+	_expect(life_fighter.hp == 0 and lethal_fighter.hp == 0, "simultaneous Lifesteal does not revive after net lethal damage")
+
+
 func _test_example_builds_and_simulation() -> void:
 	var file := FileAccess.open("res://data/example_builds.json", FileAccess.READ)
 	var builds: Dictionary = JSON.parse_string(file.get_as_text())
@@ -226,6 +288,12 @@ func _test_example_builds_and_simulation() -> void:
 		if int(entry["timed_damage"]) > 0:
 			dealt_timed_damage = true
 	_expect(dealt_timed_damage, "the Poisoner example applies damage over time in simulation")
+	duel = DuelSimulator.new(catalog).simulate(builds["pure_nuke"], builds["turtle"], 20)
+	var used_basic := false
+	for entry: Dictionary in duel["log"]:
+		if entry["move"] == "basic" and entry["damage"] == GameConfig.BASIC_ATTACK_DAMAGE:
+			used_basic = true
+	_expect(used_basic, "simulation continues with basic attacks after charged moves are spent")
 
 
 func _has_error(result: Dictionary, fragment: String) -> bool:
