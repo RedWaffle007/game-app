@@ -2,6 +2,7 @@ extends Node3D
 
 const CombatantStateScript := preload("res://src/sim/combatant_state.gd")
 const MatchSessionScript := preload("res://src/sim/match_session.gd")
+const TouchControlsScript := preload("res://src/ui/touch_controls.gd")
 const WORLD_SCALE := 0.01
 
 var catalog: FighterCatalog
@@ -16,6 +17,9 @@ var bot_health: ProgressBar
 var round_label: Label
 var status_label: Label
 var moves_label: Label
+var help_label: Label
+var next_label: Label
+var touch
 var queued_action: Dictionary = {}
 var queued_jump := false
 var queued_dash := false
@@ -42,17 +46,37 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if session == null or session.phase == "match_over":
+	if session == null:
 		return
-	if session.phase == "round_over":
+	var touch_press: Dictionary = touch.consume_presses()
+	if bool(touch_press["continue"]):
+		if session.phase == "round_over" and session.start_next_round():
+			touch.clear_all()
+			queued_action = {}
+			queued_jump = false
+			queued_dash = false
+			_sync_visuals()
+			_update_hud()
+			return
+		elif session.phase == "match_over":
+			_start_match()
+			return
+	if session.phase == "round_over" or session.phase == "match_over":
 		return
-	var direction := int(Input.is_key_pressed(KEY_D)) - int(Input.is_key_pressed(KEY_A))
+	var direction := clampi(int(Input.is_key_pressed(KEY_D)) - int(Input.is_key_pressed(KEY_A)) + touch.horizontal(), -1, 1)
+	var action: Dictionary = queued_action
+	if action.is_empty():
+		action = touch_press["action"]
+		if str(action.get("kind", "")) == "move_slot":
+			var slot: int = int(action["slot"])
+			var order: Array[String] = session.simulation.first.move_order
+			action = {"kind": "move", "id": order[slot]} if slot < order.size() else {}
 	var player_input := {
 		"horizontal": direction,
-		"duck": Input.is_key_pressed(KEY_S),
-		"jump": queued_jump,
-		"dash": queued_dash,
-		"action": queued_action,
+		"duck": Input.is_key_pressed(KEY_S) or touch.ducking(),
+		"jump": queued_jump or bool(touch_press["jump"]),
+		"dash": queued_dash or bool(touch_press["dash"]),
+		"action": action,
 	}
 	queued_jump = false
 	queued_dash = false
@@ -83,6 +107,10 @@ func _unhandled_key_input(event: InputEvent) -> void:
 					queued_action = {"kind": "move", "id": order[index]}
 		KEY_ENTER, KEY_KP_ENTER:
 			if session != null and session.start_next_round():
+				touch.clear_all()
+				queued_action = {}
+				queued_jump = false
+				queued_dash = false
 				_sync_visuals()
 				_update_hud()
 		KEY_R:
@@ -97,6 +125,8 @@ func _start_match() -> void:
 	queued_action = {}
 	queued_jump = false
 	queued_dash = false
+	if touch != null:
+		touch.clear_all()
 	_sync_visuals()
 	_update_hud()
 
@@ -194,8 +224,40 @@ func _create_hud() -> void:
 	round_label = _label(root, Vector2(480, 18), 22)
 	status_label = _label(root, Vector2(420, 72), 18)
 	moves_label = _label(root, Vector2(28, 82), 17)
-	_label(root, Vector2(28, 620), 17).text = "A/D move · W jump · S duck · Shift dash · Space attack · 1–4 moves · F shield"
-	_label(root, Vector2(28, 650), 17).text = "Enter: next round · R: rematch after result"
+	help_label = _label(root, Vector2(28, 120), 17)
+	help_label.text = "A/D move · W jump · S duck · Shift dash · Space attack · 1–4 moves · F shield"
+	next_label = _label(root, Vector2(28, 150), 17)
+	next_label.text = "Enter: next round · R: rematch after result"
+	help_label.visible = not OS.has_feature("mobile")
+	next_label.visible = not OS.has_feature("mobile")
+	touch = TouchControlsScript.new()
+	root.add_child(touch)
+	touch.set_anchors_preset(Control.PRESET_FULL_RECT)
+	touch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	get_viewport().size_changed.connect(_refresh_touch_layout)
+	_refresh_touch_layout()
+
+
+func _refresh_touch_layout() -> void:
+	var view_size: Vector2 = get_viewport().get_visible_rect().size
+	var screen_size: Vector2i = DisplayServer.screen_get_size()
+	var display_safe: Rect2i = DisplayServer.get_display_safe_area()
+	var safe := Rect2(Vector2.ZERO, view_size)
+	if screen_size.x > 0 and screen_size.y > 0 and display_safe.size.x > 0 and display_safe.size.y > 0:
+		var ratio := view_size / Vector2(screen_size)
+		safe = Rect2(Vector2(display_safe.position) * ratio, Vector2(display_safe.size) * ratio)
+		safe = safe.intersection(Rect2(Vector2.ZERO, view_size))
+	var scale := minf(safe.size.x / 1280.0, safe.size.y / 720.0)
+	player_health.position = safe.position + Vector2(28, 25) * scale
+	bot_health.position = Vector2(safe.end.x - 328 * scale, safe.position.y + 25 * scale)
+	player_health.size = Vector2(300, 27) * scale
+	bot_health.size = Vector2(300, 27) * scale
+	round_label.position = Vector2(safe.get_center().x - 160 * scale, safe.position.y + 18 * scale)
+	status_label.position = Vector2(safe.get_center().x - 220 * scale, safe.position.y + 72 * scale)
+	moves_label.position = safe.position + Vector2(28, 82) * scale
+	help_label.position = safe.position + Vector2(28, 120) * scale
+	next_label.position = safe.position + Vector2(28, 150) * scale
+	touch.configure(view_size, safe)
 
 
 func _health_bar(parent: Control, pos: Vector2) -> ProgressBar:
@@ -250,3 +312,10 @@ func _update_hud() -> void:
 		var move_id: String = player.move_order[index]
 		move_lines += "%d %s: %d   " % [index + 1, catalog.moves[move_id]["name"], player.moves[move_id]["charges"]]
 	moves_label.text = move_lines
+	if touch != null:
+		if session.phase == "round_over":
+			touch.set_continue_mode("NEXT")
+		elif session.phase == "match_over":
+			touch.set_continue_mode("REMATCH")
+		else:
+			touch.set_continue_mode("")

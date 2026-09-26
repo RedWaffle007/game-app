@@ -4,8 +4,8 @@ Godot 4 prototype for a deterministic, mobile-first 2.5D fighting game. The desi
 
 ## Current milestone
 
-Phase 0's simulation foundation is in place, and Phase 1 now has a first
-desktop grey-box playtest scene:
+Phase 0's simulation foundation is in place, and Phase 1 now has a grey-box
+playtest scene with keyboard and on-screen multi-touch controls:
 
 - JSON move, effect, and example-build catalogs
 - exact 500 PP build validation with recomputed costs
@@ -26,6 +26,7 @@ desktop grey-box playtest scene:
 - a deterministic build-vs-build smoke simulator that advances timed effects
 - a dependency-free headless GDScript test suite
 - a 3D capsule arena with a deterministic training bot and live match HUD
+- safe-area-aware touch controls for movement, attacks, shield, and round transitions
 
 Open the project in Godot and press F6 on `src/main.tscn`, or run the project
 with F5. This first interactive slice uses keyboard controls:
@@ -38,15 +39,17 @@ with F5. This first interactive slice uses keyboard controls:
 | 1–4 | The balanced preset's four moves |
 | Enter / R | Next round / rematch after match end |
 
-The opponent uses the Poisoner preset. Touch controls, animation, and phone
-deployment are still pending; this scene is for quick local feel tests.
+The opponent uses the Poisoner preset. The on-screen directional pad supports
+sliding and simultaneous attack presses; its dash button stands in for the
+planned joystick flick. You can click the controls with a mouse in the editor.
+Phone deployment and animation are still pending.
 
 Arena distances are integer simulation units. The current arena bounds and
 close/long range targets are tuning defaults in `GameConfig`. The smoke
 simulator supplies landed attacks; `CombatExchange.resolve_attempts()` checks
 range and hurtboxes for gameplay calls. `MovementRules.advance()` accepts both
-fighters' integer directions and jump/dash/duck presses once per tick; a touch
-control layer is still pending. `MatchSimulation.advance()` combines movement,
+fighters' integer directions and jump/dash/duck presses once per tick.
+`MatchSimulation.advance()` combines movement,
 buffered button actions, checked hits, projectiles, and effect timers. Inputs
 may include an `action` with kind `basic`, `move` (plus `id`), or `shield`;
 new presses replace older buffered presses.

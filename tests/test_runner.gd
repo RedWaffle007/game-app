@@ -5,6 +5,7 @@ const CombatExchangeScript := preload("res://src/sim/combat_exchange.gd")
 const MovementRulesScript := preload("res://src/sim/movement_rules.gd")
 const MatchSimulationScript := preload("res://src/sim/match_simulation.gd")
 const MatchSessionScript := preload("res://src/sim/match_session.gd")
+const TouchControlsScript := preload("res://src/ui/touch_controls.gd")
 
 var catalog: FighterCatalog
 var validator: BuildValidator
@@ -35,6 +36,7 @@ func _init() -> void:
 	_test_match_ticks_and_buffer()
 	_test_hit_stop()
 	_test_match_session()
+	_test_touch_controls()
 	_test_example_builds_and_simulation()
 	if failures == 0:
 		print("PASS: %d checks" % checks)
@@ -793,6 +795,55 @@ func _test_match_session() -> void:
 	result = session.advance({"action": {"kind": "basic"}}, {"action": {"kind": "basic"}})
 	_expect(result["round_winner"] == "draw" and session.first_rounds_won == 0 and session.second_rounds_won == 0, "simultaneous KO replays the round without a win")
 	_expect(session.start_next_round() and first.hp == GameConfig.MAX_HP and second.hp == GameConfig.MAX_HP, "drawn round resets both fighters")
+
+
+func _test_touch_controls() -> void:
+	var controls := TouchControlsScript.new()
+	var safe := Rect2(50, 30, 1180, 660)
+	controls.configure(Vector2(1280, 720), safe)
+	for slot_name: String in controls.slots:
+		var slot: Dictionary = controls.slots[slot_name]
+		var center: Vector2 = slot["center"]
+		var radius: float = slot["radius"]
+		_expect(center.x - radius >= safe.position.x and center.x + radius <= safe.end.x and center.y - radius >= safe.position.y and center.y + radius <= safe.end.y, "%s touch target stays inside safe area" % slot_name)
+	controls.press_at(1, controls.slots["left"]["center"])
+	controls.press_at(2, controls.slots["basic"]["center"])
+	var pressed: Dictionary = controls.consume_presses()
+	_expect(controls.horizontal() == -1 and pressed["action"]["kind"] == "basic", "one finger moves while another presses basic attack")
+	_expect(controls.consume_presses()["action"].is_empty() and controls.horizontal() == -1, "button press is one-shot while movement remains held")
+	controls.drag_to(1, controls.slots["right"]["center"])
+	_expect(controls.horizontal() == 1, "dragging across the pad changes held direction")
+	controls.release(1)
+	controls.release(2)
+	_expect(controls.horizontal() == 0, "lifting movement finger stops walking")
+	controls.press_at(3, controls.slots["move_2"]["center"])
+	controls.press_at(4, controls.slots["down"]["center"])
+	pressed = controls.consume_presses()
+	_expect(pressed["action"]["kind"] == "move_slot" and pressed["action"]["slot"] == 2 and controls.ducking(), "move buttons and duck can use separate fingers")
+	controls.release(3)
+	controls.release(4)
+	controls.press_at(5, controls.slots["up"]["center"])
+	controls.press_at(6, controls.slots["dash"]["center"])
+	pressed = controls.consume_presses()
+	_expect(pressed["jump"] and pressed["dash"], "jump and dash touch presses are captured together")
+	controls.clear_all()
+	controls.set_continue_mode("NEXT")
+	controls.press_at(7, controls.slots["basic"]["center"])
+	_expect(controls.consume_presses()["action"].is_empty(), "combat buttons are inactive on a round result")
+	controls.press_at(8, controls.slots["continue"]["center"])
+	_expect(controls.consume_presses()["continue"], "result screen has a touch next-round button")
+	controls.set_continue_mode("")
+	controls.clear_all()
+	var screen_touch := InputEventScreenTouch.new()
+	screen_touch.index = 9
+	screen_touch.position = controls.slots["shield"]["center"]
+	screen_touch.pressed = true
+	controls._input(screen_touch)
+	_expect(controls.consume_presses()["action"]["kind"] == "shield", "Godot screen-touch events reach the shield control")
+	screen_touch.pressed = false
+	controls._input(screen_touch)
+	_expect(controls.fingers.is_empty(), "screen-touch release clears the held finger")
+	controls.free()
 
 
 func _test_example_builds_and_simulation() -> void:
