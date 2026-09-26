@@ -1,11 +1,15 @@
 class_name CombatExchange
 extends RefCounted
 
+const SpatialRulesScript := preload("res://src/sim/spatial_rules.gd")
+
 var resolver: CombatResolver
+var spatial: RefCounted
 
 
 func _init(source_catalog: FighterCatalog = null) -> void:
 	resolver = CombatResolver.new(source_catalog)
+	spatial = SpatialRulesScript.new()
 
 
 ## Resolve both declared attacks against the state at the start of the tick.
@@ -24,6 +28,7 @@ func resolve(first: RefCounted, second: RefCounted, first_action: Dictionary, se
 	var second_hit := _resolve_one(second_attack, second, first)
 	var first_hp_before: int = first.hp
 	var second_hp_before: int = second.hp
+	var positions: Dictionary = spatial.resolve(first.x, second.x, first_hit, second_hit)
 
 	# Both results were calculated before damage or control effects were applied.
 	# Thus a lethal hit or Shock from one side cannot erase the other side's hit.
@@ -40,8 +45,10 @@ func resolve(first: RefCounted, second: RefCounted, first_action: Dictionary, se
 	# Commit net HP from the pre-hit snapshot for both fighters.
 	first.hp = clampi(first_hp_before - int(second_hit.get("damage", 0)) + int(first_hit.get("heal", 0)), 0, GameConfig.MAX_HP)
 	second.hp = clampi(second_hp_before - int(first_hit.get("damage", 0)) + int(second_hit.get("heal", 0)), 0, GameConfig.MAX_HP)
+	first.x = positions["first_x"]
+	second.x = positions["second_x"]
 
-	return {"first_hit": first_hit, "second_hit": second_hit}
+	return {"first_hit": first_hit, "second_hit": second_hit, "positions": positions}
 
 
 func _prepare(fighter: RefCounted, action: Dictionary) -> Dictionary:

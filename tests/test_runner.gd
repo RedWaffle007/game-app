@@ -23,6 +23,7 @@ func _init() -> void:
 	_test_timed_effect_replacement()
 	_test_combatant_state()
 	_test_combat_exchange()
+	_test_spatial_effects()
 	_test_example_builds_and_simulation()
 	if failures == 0:
 		print("PASS: %d checks" % checks)
@@ -271,6 +272,49 @@ func _test_combat_exchange() -> void:
 	lethal_fighter.hp = 50
 	exchange.resolve(lethal_fighter, life_fighter, {"kind": "move", "id": "heavy_smash"}, {"kind": "move", "id": "jab"})
 	_expect(life_fighter.hp == 0 and lethal_fighter.hp == 0, "simultaneous Lifesteal does not revive after net lethal damage")
+
+
+func _test_spatial_effects() -> void:
+	var exchange := CombatExchangeScript.new(catalog)
+	var knockback_move := [{"id": "jab", "charges": 1, "damage": 100, "effect": "knockback", "flourish": false}]
+	var attacker := CombatantStateScript.new("attacker", knockback_move, 0, -100)
+	var defender := CombatantStateScript.new("defender", [], 0, 100)
+	exchange.resolve(attacker, defender, {"kind": "move", "id": "jab"}, {})
+	_expect(attacker.x == -100 and defender.x == 400, "full Knockback reaches long range without moving the attacker")
+
+	attacker = CombatantStateScript.new("attacker", knockback_move, 0, -100)
+	defender = CombatantStateScript.new("defender", [], 50, 100)
+	_expect(defender.activate_shield(), "partial Knockback test has an active parry")
+	exchange.resolve(attacker, defender, {"kind": "move", "id": "jab"}, {})
+	_expect(defender.x == 250, "half-penetrating Knockback moves half the distance")
+
+	attacker = CombatantStateScript.new("attacker", knockback_move, 0, 700)
+	defender = CombatantStateScript.new("defender", [], 0, 900)
+	var wall_hit: Dictionary = exchange.resolve(attacker, defender, {"kind": "move", "id": "jab"}, {})
+	_expect(defender.x == 800 and wall_hit["positions"]["second_bounced"], "Knockback reflects once at the arena wall")
+
+	var pull_move := [{"id": "jab", "charges": 1, "damage": 100, "effect": "pull", "flourish": false}]
+	attacker = CombatantStateScript.new("attacker", pull_move, 0, -250)
+	defender = CombatantStateScript.new("defender", [], 0, 250)
+	exchange.resolve(attacker, defender, {"kind": "move", "id": "jab"}, {})
+	_expect(defender.x == -150, "full Pull stops at close range")
+
+	attacker = CombatantStateScript.new("attacker", knockback_move, 0, -100)
+	defender = CombatantStateScript.new("defender", [], 100, 100)
+	_expect(defender.activate_shield(), "fully blocked displacement test has an active parry")
+	exchange.resolve(attacker, defender, {"kind": "move", "id": "jab"}, {})
+	_expect(defender.x == 100, "fully blocked Knockback causes no displacement")
+
+	attacker = CombatantStateScript.new("attacker", knockback_move, 0, -100)
+	defender = CombatantStateScript.new("defender", [{"id": "straight_punch", "charges": 2, "damage": 50, "effect": "", "flourish": false}], 0, 100)
+	_expect(defender.begin_move("straight_punch"), "defender begins a wind-up")
+	exchange.resolve(attacker, defender, {"kind": "move", "id": "jab"}, {})
+	_expect(defender.x == 400 and defender.windup_move_id == "straight_punch", "Knockback moves without cancelling wind-up")
+
+	var first := CombatantStateScript.new("first", pull_move, 0, -250)
+	var second := CombatantStateScript.new("second", pull_move, 0, 250)
+	exchange.resolve(first, second, {"kind": "move", "id": "jab"}, {"kind": "move", "id": "jab"})
+	_expect(first.x == -20 and second.x == 20, "simultaneous Pull settles without overlap or order bias")
 
 
 func _test_example_builds_and_simulation() -> void:

@@ -11,9 +11,15 @@ Phase 0 has started with a pure-logic simulation foundation:
 - integer-only damage, charge, shield, combo, and effect resolution
 - shield recharge gated by both 180 ticks and two contact actions
 - one exchange path for basic attacks, shields, move effects, and simultaneous hits
+- integer arena positions with walled Knockback and Pull resolution
 - timed-effect replacement and deterministic damage-over-time ticks
 - a deterministic build-vs-build smoke simulator that advances timed effects
 - a dependency-free headless GDScript test suite
+
+Arena distances are integer simulation units. The current arena bounds and
+close/long range targets are tuning defaults in `GameConfig`. The smoke
+simulator supplies landed attacks; move range, hurtboxes, and movement input
+will be added with the grey-box gameplay phase.
 
 Run the tests with Godot 4. The wrapper first performs a compile-only pass so
 parser errors cannot be mistaken for a successful assertion run:

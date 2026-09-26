@@ -75,7 +75,8 @@ func simulate(
 
 
 func _make_fighter(fighter_name: String, checked_build: Dictionary) -> RefCounted:
-	return CombatantStateScript.new(fighter_name, checked_build["moves"], checked_build["shield"])
+	var start_x := -GameConfig.START_DISTANCE_FROM_CENTER if fighter_name == "A" else GameConfig.START_DISTANCE_FROM_CENTER
+	return CombatantStateScript.new(fighter_name, checked_build["moves"], checked_build["shield"], start_x)
 
 
 func _next_action(fighter: RefCounted, cursor: int) -> Dictionary:

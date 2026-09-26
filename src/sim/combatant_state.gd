@@ -3,6 +3,7 @@ extends RefCounted
 
 var name: String
 var hp := GameConfig.MAX_HP
+var x := 0
 var moves: Dictionary = {}
 var move_order: Array[String] = []
 var active_effects: Dictionary = {}
@@ -13,8 +14,9 @@ var control_immunity_ticks_left := 0
 var shield: ShieldRuntime
 
 
-func _init(fighter_name: String, computed_moves: Array, shield_strength: int = 0) -> void:
+func _init(fighter_name: String, computed_moves: Array, shield_strength: int = 0, start_x: int = 0) -> void:
 	name = fighter_name
+	x = clampi(start_x, -GameConfig.ARENA_HALF_WIDTH, GameConfig.ARENA_HALF_WIDTH)
 	shield = ShieldRuntime.new(shield_strength)
 	for raw_move: Variant in computed_moves:
 		var move: Dictionary = raw_move
@@ -107,6 +109,7 @@ func snapshot() -> Dictionary:
 	return {
 		"name": name,
 		"hp": hp,
+		"x": x,
 		"moves": moves.duplicate(true),
 		"move_order": move_order.duplicate(),
 		"active_effects": active_effects.duplicate(true),
