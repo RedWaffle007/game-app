@@ -11,6 +11,7 @@ var movement: RefCounted = MovementRulesScript.new()
 var pending: Array[Dictionary] = [{}, {}]
 var remaining: Array[int] = [0, 0]
 var tick_index := 0
+var hit_stop_ticks_left := 0
 
 
 func _init(first_fighter: RefCounted, second_fighter: RefCounted, catalog: FighterCatalog = null) -> void:
@@ -24,6 +25,27 @@ func _init(first_fighter: RefCounted, second_fighter: RefCounted, catalog: Fight
 func advance(first_input: Dictionary = {}, second_input: Dictionary = {}) -> Dictionary:
 	_store_press(0, first_input)
 	_store_press(1, second_input)
+	if hit_stop_ticks_left > 0:
+		hit_stop_ticks_left -= 1
+		tick_index += 1
+		var stationary_positions := {
+			"first_x": first.x,
+			"second_x": second.x,
+			"first_bounced": false,
+			"second_bounced": false,
+		}
+		return {
+			"tick": tick_index,
+			"hit_stop": true,
+			"hit_stop_ticks_left": hit_stop_ticks_left,
+			"movement": {"first_x": first.x, "second_x": second.x},
+			"first_shield": false,
+			"second_shield": false,
+			"attacks": {"first_hit": {}, "second_hit": {}, "positions": stationary_positions},
+			"projectiles": {"first_hit": {}, "second_hit": {}, "positions": stationary_positions.duplicate(), "projectiles_cancelled": false},
+			"first_timed_damage": 0,
+			"second_timed_damage": 0,
+		}
 	var positions: Dictionary = movement.advance(first, second, first_input, second_input)
 	var first_action := _take_ready_action(0, first)
 	var second_action := _take_ready_action(1, second)
@@ -34,6 +56,7 @@ func advance(first_input: Dictionary = {}, second_input: Dictionary = {}) -> Dic
 	var second_attack: Dictionary = {} if second_shield else second_action
 	var attacks: Dictionary = exchange.resolve_attempts(first, second, first_attack, second_attack)
 	var projectiles: Dictionary = exchange.advance_projectiles(first, second)
+	hit_stop_ticks_left = _hit_stop_for(attacks, projectiles)
 	var first_timed_damage: int = first.tick()
 	var second_timed_damage: int = second.tick()
 	_age_buffer(0)
@@ -41,6 +64,8 @@ func advance(first_input: Dictionary = {}, second_input: Dictionary = {}) -> Dic
 	tick_index += 1
 	return {
 		"tick": tick_index,
+		"hit_stop": false,
+		"hit_stop_ticks_left": hit_stop_ticks_left,
 		"movement": positions,
 		"first_shield": first_shield,
 		"second_shield": second_shield,
@@ -57,11 +82,13 @@ func reset_round() -> void:
 	pending = [{}, {}]
 	remaining = [0, 0]
 	tick_index = 0
+	hit_stop_ticks_left = 0
 
 
 func snapshot() -> Dictionary:
 	return {
 		"tick": tick_index,
+		"hit_stop_ticks_left": hit_stop_ticks_left,
 		"first": first.snapshot(),
 		"second": second.snapshot(),
 		"pending": [pending[0].duplicate(true), pending[1].duplicate(true)],
@@ -109,3 +136,17 @@ func _age_buffer(index: int) -> void:
 		remaining[index] -= 1
 		if remaining[index] == 0:
 			pending[index] = {}
+
+
+func _hit_stop_for(attacks: Dictionary, projectiles: Dictionary) -> int:
+	var max_damage := 0
+	var connected := false
+	for exchange_result: Dictionary in [attacks, projectiles]:
+		for key: String in ["first_hit", "second_hit"]:
+			var hit: Dictionary = exchange_result[key]
+			if not hit.is_empty():
+				connected = true
+				max_damage = maxi(max_damage, int(hit.get("damage", 0)))
+	if not connected:
+		return 0
+	return mini(GameConfig.HIT_STOP_MAX_TICKS, GameConfig.HIT_STOP_BASE_TICKS + max_damage / GameConfig.HIT_STOP_DAMAGE_STEP)

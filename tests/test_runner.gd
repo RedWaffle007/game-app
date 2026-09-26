@@ -32,6 +32,7 @@ func _init() -> void:
 	_test_projectiles()
 	_test_movement()
 	_test_match_ticks_and_buffer()
+	_test_hit_stop()
 	_test_example_builds_and_simulation()
 	if failures == 0:
 		print("PASS: %d checks" % checks)
@@ -684,6 +685,43 @@ func _test_match_ticks_and_buffer() -> void:
 	_expect(replay.snapshot() == expected, "same tick inputs produce identical match snapshots")
 	match_state.reset_round()
 	_expect(match_state.tick_index == 0 and match_state.pending[0].is_empty() and match_state.first.hp == GameConfig.MAX_HP, "round reset clears tick count, buffer, and fighter state")
+
+
+func _test_hit_stop() -> void:
+	var first := CombatantStateScript.new("first", [], 0, -60)
+	var second := CombatantStateScript.new("second", [], 0, 0)
+	var match_state := MatchSimulationScript.new(first, second, catalog)
+	var step: Dictionary = match_state.advance({"action": {"kind": "basic"}}, {"action": {"kind": "basic"}})
+	_expect(step["attacks"]["first_hit"]["damage"] == 20 and step["attacks"]["second_hit"]["damage"] == 20, "simultaneous hits still trade before hit-stop")
+	_expect(step["hit_stop_ticks_left"] == GameConfig.HIT_STOP_BASE_TICKS, "a basic contact freezes both fighters for the base duration")
+	var before_freeze: Dictionary = first.snapshot()
+	step = match_state.advance({"horizontal": 1, "action": {"kind": "basic"}}, {"horizontal": -1})
+	_expect(step["hit_stop"] and first.snapshot() == before_freeze and second.x == 0, "hit-stop freezes movement and combat state symmetrically")
+	_expect(match_state.remaining[0] == GameConfig.INPUT_BUFFER_TICKS, "button presses during hit-stop are buffered without aging")
+	match_state.advance()
+	_expect(match_state.hit_stop_ticks_left == 0 and match_state.remaining[0] == GameConfig.INPUT_BUFFER_TICKS, "hit-stop lasts exactly its scheduled ticks")
+	step = match_state.advance()
+	_expect(not step["hit_stop"] and step["attacks"]["first_hit"]["damage"] == 20, "buffered attack executes when hit-stop ends")
+
+	var heavy := [{"id": "heavy_smash", "charges": 1, "damage": 500, "effect": "", "flourish": false}]
+	first = CombatantStateScript.new("first", heavy, 0, -60)
+	second = CombatantStateScript.new("second", [], 0, 0)
+	match_state = MatchSimulationScript.new(first, second, catalog)
+	step = match_state.advance({"action": {"kind": "move", "id": "heavy_smash"}}, {})
+	_expect(step["hit_stop_ticks_left"] == GameConfig.HIT_STOP_MAX_TICKS, "large hits reach the capped hit-stop duration")
+	var frozen_hp: int = second.hp
+	second.apply_incoming_hit({"effect": {"id": "burn", "total_damage": 30, "duration_ticks": 180}})
+	var effect_before: Dictionary = second.active_effects.duplicate(true)
+	step = match_state.advance()
+	_expect(step["second_timed_damage"] == 0 and second.hp == frozen_hp and second.active_effects == effect_before, "damage-over-time and its timer pause during hit-stop")
+	match_state.reset_round()
+	_expect(match_state.hit_stop_ticks_left == 0 and match_state.snapshot()["hit_stop_ticks_left"] == 0, "round reset clears hit-stop")
+
+	first = CombatantStateScript.new("first", [], 0, -60)
+	second = CombatantStateScript.new("second", [], 100, 0)
+	match_state = MatchSimulationScript.new(first, second, catalog)
+	step = match_state.advance({"action": {"kind": "basic"}}, {"action": {"kind": "shield"}})
+	_expect(step["attacks"]["first_hit"]["damage"] == 0 and step["hit_stop_ticks_left"] == GameConfig.HIT_STOP_BASE_TICKS, "a fully parried contact still causes base hit-stop")
 
 
 func _test_example_builds_and_simulation() -> void:

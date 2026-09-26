@@ -18,6 +18,7 @@ Phase 0 has started with a pure-logic simulation foundation:
 - deterministic Fireball travel, parries, ducking, and projectile cancellation
 - fixed-tick walk, jump/double jump, dash, and duck movement with arena spacing
 - a single match tick with a six-tick button buffer and deterministic action order
+- shared, damage-scaled hit-stop that pauses gameplay timers but retains button presses
 - combo scaling after Stagger or Uppercut, with a three-hit airborne limit
 - timed-effect replacement and deterministic damage-over-time ticks
 - a deterministic build-vs-build smoke simulator that advances timed effects
@@ -32,6 +33,8 @@ control layer is still pending. `MatchSimulation.advance()` combines movement,
 buffered button actions, checked hits, projectiles, and effect timers. Inputs
 may include an `action` with kind `basic`, `move` (plus `id`), or `shield`;
 new presses replace older buffered presses.
+Landed contacts schedule 2–6 shared hit-stop ticks; inputs pressed during the
+freeze remain buffered until gameplay resumes.
 Uppercut currently uses a 45-tick airborne timer as a balance placeholder.
 The match tick advances projectiles after checked actions, so a Fireball can
 contact a nearby fighter on its launch tick.
