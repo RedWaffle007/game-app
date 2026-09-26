@@ -26,6 +26,7 @@ func _init() -> void:
 	_test_spatial_effects()
 	_test_stagger_push_and_round_reset()
 	_test_combo_flow()
+	_test_hit_geometry()
 	_test_example_builds_and_simulation()
 	if failures == 0:
 		print("PASS: %d checks" % checks)
@@ -43,6 +44,9 @@ func _expect(condition: bool, message: String) -> void:
 
 func _test_catalog_and_costs() -> void:
 	_expect(catalog.moves.size() == 10, "the MVP catalog has ten moves")
+	for move_id: String in catalog.moves:
+		var move: Dictionary = catalog.moves[move_id]
+		_expect(int(move.get("range", 0)) > 0 and int(move.get("hitbox_max_y", 0)) > int(move.get("hitbox_min_y", 0)), "%s has a physical range and hitbox" % move_id)
 	_expect(catalog.effects.size() == 10, "the effect catalog hard cap is ten")
 	_expect(catalog.move_damage("jab", 100) == 80, "damage rate uses integer hundredths")
 	_expect(catalog.move_damage("heavy_smash", 385) == 500, "damage is capped at 500")
@@ -435,6 +439,69 @@ func _test_combo_flow() -> void:
 	exchange.resolve(attacker, defender, {"kind": "basic"}, {})
 	followup = exchange.resolve(attacker, defender, {"kind": "basic"}, {})
 	_expect(followup["first_hit"]["damage"] == 20 and defender.combo_source == "", "ordinary hits never start a combo")
+
+
+func _test_hit_geometry() -> void:
+	var exchange := CombatExchangeScript.new(catalog)
+	var jab := [{"id": "jab", "charges": 1, "damage": 100, "effect": "", "flourish": false}]
+	var attacker := CombatantStateScript.new("attacker", jab, 0, -250)
+	var defender := CombatantStateScript.new("defender", [], 100, 250)
+	_expect(defender.activate_shield(), "distant defender has an active parry")
+	var attempt: Dictionary = exchange.resolve_attempts(attacker, defender, {"kind": "move", "id": "jab"}, {})
+	_expect(attempt["first_hit"].is_empty() and attacker.moves["jab"]["charges"] == 0, "out-of-range move whiffs and still spends its charge")
+	_expect(defender.shield.active and defender.hp == GameConfig.MAX_HP, "a whiff does not consume shield or deal damage")
+
+	attacker = CombatantStateScript.new("attacker", jab, 0, -60)
+	defender = CombatantStateScript.new("defender", [], 0, 0)
+	_expect(defender.set_ducking(true), "grounded defender can duck")
+	attempt = exchange.resolve_attempts(attacker, defender, {"kind": "move", "id": "jab"}, {})
+	_expect(attempt["first_hit"].is_empty(), "ducking hurtbox avoids a physically high Jab")
+
+	var sweep := [{"id": "low_sweep", "charges": 1, "damage": 100, "effect": "", "flourish": false, "air_allowed": false}]
+	attacker = CombatantStateScript.new("attacker", sweep, 0, -60)
+	attempt = exchange.resolve_attempts(attacker, defender, {"kind": "move", "id": "low_sweep"}, {})
+	_expect(attempt["first_hit"]["damage"] == 100, "Low Sweep reaches a ducking hurtbox")
+
+	var overhead := [{"id": "heavy_smash", "charges": 1, "damage": 100, "effect": "", "flourish": false}]
+	attacker = CombatantStateScript.new("attacker", overhead, 0, -60)
+	attempt = exchange.resolve_attempts(attacker, defender, {"kind": "move", "id": "heavy_smash"}, {})
+	_expect(attempt["first_hit"]["damage"] == 100, "Mid overhead reaches a ducking hurtbox")
+
+	attacker = CombatantStateScript.new("attacker", sweep, 0, -60)
+	_expect(attacker.set_ducking(true), "attacker can crouch for a low basic poke")
+	attempt = exchange.resolve_attempts(attacker, defender, {"kind": "basic"}, {})
+	_expect(attempt["first_hit"]["damage"] == GameConfig.BASIC_ATTACK_DAMAGE, "ducking basic attack becomes a low poke")
+	_expect(not attacker.begin_move("low_sweep") and attacker.can_basic_attack(), "ducking permits basic attack but not a catalog move")
+
+	attacker = CombatantStateScript.new("attacker", sweep, 0, -60)
+	defender = CombatantStateScript.new("defender", [], 0, 0)
+	defender.y = GameConfig.LAUNCH_HURTBOX_BOTTOM_Y
+	defender.airborne_ticks_left = 10
+	attempt = exchange.resolve_attempts(attacker, defender, {"kind": "move", "id": "low_sweep"}, {})
+	_expect(attempt["first_hit"].is_empty(), "airborne hurtbox passes above Low Sweep")
+	_expect(not defender.set_ducking(true), "airborne fighter cannot duck")
+
+	attacker = CombatantStateScript.new("attacker", jab, 0, -60)
+	defender = CombatantStateScript.new("defender", [], 100, 0)
+	defender.y = GameConfig.LAUNCH_HURTBOX_BOTTOM_Y
+	defender.airborne_ticks_left = 10
+	_expect(defender.activate_shield(), "airborne fighter can parry")
+	attempt = exchange.resolve_attempts(attacker, defender, {"kind": "move", "id": "jab"}, {})
+	_expect(attempt["first_hit"]["damage"] == 0 and not defender.shield.active, "airborne parry absorbs a high attack")
+
+	attacker = CombatantStateScript.new("attacker", [{"id": "straight_punch", "charges": 1, "damage": 100, "effect": "", "flourish": false}], 0, 0)
+	defender = CombatantStateScript.new("defender", [], 0, -60)
+	attempt = exchange.resolve_attempts(attacker, defender, {"kind": "move", "id": "straight_punch"}, {})
+	_expect(attempt["first_hit"].is_empty(), "forward punch does not hit a fighter behind its facing")
+	attacker = CombatantStateScript.new("attacker", [{"id": "spinning_slash", "charges": 1, "damage": 100, "effect": "", "flourish": false}], 0, 0)
+	attempt = exchange.resolve_attempts(attacker, defender, {"kind": "move", "id": "spinning_slash"}, {})
+	_expect(attempt["first_hit"]["damage"] == 100, "Spinning Slash hitbox reaches behind")
+
+	attacker = CombatantStateScript.new("attacker", [], 0, -60)
+	defender = CombatantStateScript.new("defender", [{"id": "jab", "charges": 1, "damage": 50, "effect": "", "flourish": false}], 0, 0)
+	_expect(defender.begin_move("jab"), "defender starts a wind-up before a normal hit")
+	attempt = exchange.resolve_attempts(attacker, defender, {"kind": "basic"}, {})
+	_expect(attempt["first_hit"]["damage"] == 20 and defender.windup_move_id == "jab", "normal hit deals damage without cancelling wind-up")
 
 
 func _test_example_builds_and_simulation() -> void:

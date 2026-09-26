@@ -2,20 +2,33 @@ class_name CombatExchange
 extends RefCounted
 
 const SpatialRulesScript := preload("res://src/sim/spatial_rules.gd")
+const HitGeometryScript := preload("res://src/sim/hit_geometry.gd")
 
 var resolver: CombatResolver
 var spatial: RefCounted
+var geometry: RefCounted
 
 
 func _init(source_catalog: FighterCatalog = null) -> void:
 	resolver = CombatResolver.new(source_catalog)
 	spatial = SpatialRulesScript.new()
+	geometry = HitGeometryScript.new()
 
 
 ## Resolve both declared attacks against the state at the start of the tick.
 ## An empty action means no attack. Move charges are spent when the attack begins.
-## Position and hitbox checks belong to the caller; actions supplied here landed.
+## This path is for scripted balance tests where attacks are already known to land.
 func resolve(first: RefCounted, second: RefCounted, first_action: Dictionary, second_action: Dictionary) -> Dictionary:
+	return _resolve_pair(first, second, first_action, second_action, false)
+
+
+## This path checks range, facing, and physical height. A missed move still
+## spends its charge, but creates no hit, effect, or shield contact.
+func resolve_attempts(first: RefCounted, second: RefCounted, first_action: Dictionary, second_action: Dictionary) -> Dictionary:
+	return _resolve_pair(first, second, first_action, second_action, true)
+
+
+func _resolve_pair(first: RefCounted, second: RefCounted, first_action: Dictionary, second_action: Dictionary, check_geometry: bool) -> Dictionary:
 	var first_attack := _prepare(first, first_action)
 	var second_attack := _prepare(second, second_action)
 	# Actions that land this tick have finished wind-up. Shock only refunds a
@@ -24,8 +37,8 @@ func resolve(first: RefCounted, second: RefCounted, first_action: Dictionary, se
 		first.finish_windup()
 	if not second_attack.is_empty():
 		second.finish_windup()
-	var first_hit := _resolve_one(first_attack, first, second)
-	var second_hit := _resolve_one(second_attack, second, first)
+	var first_hit := _resolve_one(first_attack, first, second, check_geometry)
+	var second_hit := _resolve_one(second_attack, second, first, check_geometry)
 	var first_hp_before: int = first.hp
 	var second_hp_before: int = second.hp
 	var first_was_airborne: bool = first.airborne_ticks_left > 0
@@ -59,7 +72,14 @@ func _prepare(fighter: RefCounted, action: Dictionary) -> Dictionary:
 	var kind: String = str(action.get("kind", ""))
 	if kind == "basic":
 		if fighter.can_basic_attack():
-			return {"damage": GameConfig.BASIC_ATTACK_DAMAGE, "effect": "", "kind": kind}
+			return {
+				"damage": GameConfig.BASIC_ATTACK_DAMAGE,
+				"effect": "",
+				"kind": kind,
+				"range": GameConfig.BASIC_ATTACK_RANGE,
+				"hitbox_min_y": GameConfig.BASIC_LOW_MIN_Y if fighter.ducking else GameConfig.BASIC_HIGH_MIN_Y,
+				"hitbox_max_y": GameConfig.BASIC_LOW_MAX_Y if fighter.ducking else GameConfig.BASIC_HIGH_MAX_Y,
+			}
 		return {}
 	if kind == "move":
 		var move_id: String = str(action.get("id", ""))
@@ -68,12 +88,24 @@ func _prepare(fighter: RefCounted, action: Dictionary) -> Dictionary:
 			if bool(move.get("flourish", false)):
 				return {"kind": "flourish", "id": move_id}
 			var move_data: Dictionary = resolver.catalog.moves.get(move_id, {})
-			return {"damage": int(move["damage"]), "effect": str(move["effect"]), "kind": kind, "id": move_id, "launch": bool(move_data.get("launch", false))}
+			return {
+				"damage": int(move["damage"]),
+				"effect": str(move["effect"]),
+				"kind": kind,
+				"id": move_id,
+				"launch": bool(move_data.get("launch", false)),
+				"range": int(move_data.get("range", 0)),
+				"hitbox_min_y": int(move_data.get("hitbox_min_y", 0)),
+				"hitbox_max_y": int(move_data.get("hitbox_max_y", 0)),
+				"hits_behind": bool(move_data.get("hits_behind", false)),
+			}
 	return {}
 
 
-func _resolve_one(attack: Dictionary, attacker: RefCounted, defender: RefCounted) -> Dictionary:
+func _resolve_one(attack: Dictionary, attacker: RefCounted, defender: RefCounted, check_geometry: bool) -> Dictionary:
 	if attack.is_empty() or str(attack.get("kind", "")) == "flourish":
+		return {}
+	if check_geometry and not geometry.connects(attacker, defender, attack):
 		return {}
 	if not defender.can_receive_hit():
 		return {}

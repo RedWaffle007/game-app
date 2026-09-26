@@ -4,7 +4,11 @@ extends RefCounted
 var name: String
 var hp := GameConfig.MAX_HP
 var x := 0
+var y := 0
+var ducking := false
+var facing := 1
 var round_start_x := 0
+var round_start_facing := 1
 var moves: Dictionary = {}
 var move_order: Array[String] = []
 var active_effects: Dictionary = {}
@@ -23,6 +27,8 @@ func _init(fighter_name: String, computed_moves: Array, shield_strength: int = 0
 	name = fighter_name
 	x = clampi(start_x, -GameConfig.ARENA_HALF_WIDTH, GameConfig.ARENA_HALF_WIDTH)
 	round_start_x = x
+	facing = -1 if x > 0 else 1
+	round_start_facing = facing
 	shield = ShieldRuntime.new(shield_strength)
 	for raw_move: Variant in computed_moves:
 		var move: Dictionary = raw_move
@@ -33,7 +39,7 @@ func _init(fighter_name: String, computed_moves: Array, shield_strength: int = 0
 
 
 func begin_move(move_id: String) -> bool:
-	if control_ticks_left > 0 or shield.active or shield.recovery_ticks_left > 0 or windup_move_id != "" or not moves.has(move_id):
+	if control_ticks_left > 0 or ducking or shield.active or shield.recovery_ticks_left > 0 or windup_move_id != "" or not moves.has(move_id):
 		return false
 	var move: Dictionary = moves[move_id]
 	if airborne_ticks_left > 0 and not bool(move.get("air_allowed", true)):
@@ -64,7 +70,15 @@ func finish_windup() -> void:
 	windup_move_id = ""
 
 
+func set_ducking(wants_to_duck: bool) -> bool:
+	if wants_to_duck and (airborne_ticks_left > 0 or y > 0 or control_ticks_left > 0):
+		return false
+	ducking = wants_to_duck
+	return true
+
+
 func land() -> void:
+	y = 0
 	airborne_ticks_left = 0
 	airborne_hits_taken = 0
 	if combo_source == "uppercut":
@@ -77,6 +91,9 @@ func land() -> void:
 func reset_round() -> void:
 	hp = GameConfig.MAX_HP
 	x = round_start_x
+	y = 0
+	ducking = false
+	facing = round_start_facing
 	for move_id: String in move_order:
 		var move: Dictionary = moves[move_id]
 		move["charges"] = int(move["max_charges"])
@@ -112,6 +129,8 @@ func register_landed_hit(attack: Dictionary, hit: Dictionary, was_airborne: bool
 	if was_airborne:
 		airborne_hits_taken += 1
 	if bool(attack.get("launch", false)):
+		y = GameConfig.LAUNCH_HURTBOX_BOTTOM_Y
+		ducking = false
 		airborne_ticks_left = GameConfig.UPPERCUT_AIRBORNE_TICKS
 		if not was_airborne:
 			airborne_hits_taken = 0
@@ -176,6 +195,8 @@ func tick() -> int:
 	control_immunity_ticks_left = maxi(0, control_immunity_ticks_left - 1)
 	airborne_ticks_left = maxi(0, airborne_ticks_left - 1)
 	if airborne_ticks_left == 0:
+		if y == GameConfig.LAUNCH_HURTBOX_BOTTOM_Y:
+			y = 0
 		airborne_hits_taken = 0
 		if combo_source == "uppercut":
 			if control_ticks_left > 0:
@@ -196,7 +217,11 @@ func snapshot() -> Dictionary:
 		"name": name,
 		"hp": hp,
 		"x": x,
+		"y": y,
+		"ducking": ducking,
+		"facing": facing,
 		"round_start_x": round_start_x,
+		"round_start_facing": round_start_facing,
 		"moves": moves.duplicate(true),
 		"move_order": move_order.duplicate(),
 		"active_effects": active_effects.duplicate(true),

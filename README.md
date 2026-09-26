@@ -14,6 +14,7 @@ Phase 0 has started with a pure-logic simulation foundation:
 - integer arena positions with walled Knockback and Pull resolution
 - Stagger pushback and full combatant reset between rounds
 - playable Flourish actions with no combat utility or charge use
+- catalog ranges and vertical hitboxes for checked attack attempts
 - combo scaling after Stagger or Uppercut, with a three-hit airborne limit
 - timed-effect replacement and deterministic damage-over-time ticks
 - a deterministic build-vs-build smoke simulator that advances timed effects
@@ -21,9 +22,10 @@ Phase 0 has started with a pure-logic simulation foundation:
 
 Arena distances are integer simulation units. The current arena bounds and
 close/long range targets are tuning defaults in `GameConfig`. The smoke
-simulator supplies landed attacks; move range, hurtboxes, and movement input
-will be added with the grey-box gameplay phase.
+simulator supplies landed attacks; `CombatExchange.resolve_attempts()` checks
+range and hurtboxes for gameplay calls. Movement input is still pending.
 Uppercut currently uses a 45-tick airborne timer as a balance placeholder.
+Fireball travel and projectile cancellation are not simulated yet.
 
 Run the tests with Godot 4. The wrapper first performs a compile-only pass so
 parser errors cannot be mistaken for a successful assertion run:
