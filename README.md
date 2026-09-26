@@ -4,7 +4,8 @@ Godot 4 prototype for a deterministic, mobile-first 2.5D fighting game. The desi
 
 ## Current milestone
 
-Phase 0 has started with a pure-logic simulation foundation:
+Phase 0's simulation foundation is in place, and Phase 1 now has a first
+desktop grey-box playtest scene:
 
 - JSON move, effect, and example-build catalogs
 - exact 500 PP build validation with recomputed costs
@@ -24,6 +25,21 @@ Phase 0 has started with a pure-logic simulation foundation:
 - timed-effect replacement and deterministic damage-over-time ticks
 - a deterministic build-vs-build smoke simulator that advances timed effects
 - a dependency-free headless GDScript test suite
+- a 3D capsule arena with a deterministic training bot and live match HUD
+
+Open the project in Godot and press F6 on `src/main.tscn`, or run the project
+with F5. This first interactive slice uses keyboard controls:
+
+| Input | Action |
+|---|---|
+| A / D | Walk |
+| W / S / Shift | Jump / duck / dash |
+| Space / F | Basic attack / shield |
+| 1–4 | The balanced preset's four moves |
+| Enter / R | Next round / rematch after match end |
+
+The opponent uses the Poisoner preset. Touch controls, animation, and phone
+deployment are still pending; this scene is for quick local feel tests.
 
 Arena distances are integer simulation units. The current arena bounds and
 close/long range targets are tuning defaults in `GameConfig`. The smoke

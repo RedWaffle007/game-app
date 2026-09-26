@@ -18,3 +18,13 @@ fi
 # Check compilation separately so any parser failure makes this command fail.
 "${engine[@]}" --headless --path "$project_root" --check-only --script res://tests/test_runner.gd
 "${engine[@]}" --headless --path "$project_root" --script res://tests/test_runner.gd
+
+# A scene can log a startup error while Godot still exits with status zero.
+if ! startup_output=$("${engine[@]}" --headless --path "$project_root" --quit-after 5 2>&1); then
+	printf '%s\n' "$startup_output" >&2
+	exit 1
+fi
+printf '%s\n' "$startup_output"
+if [[ "$startup_output" == *"ERROR:"* ]]; then
+	exit 1
+fi
