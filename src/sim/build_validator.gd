@@ -30,10 +30,12 @@ func validate(build: Dictionary) -> Dictionary:
 		var move_id: String = str(choice.get("id", ""))
 		var effect_id: String = str(choice.get("effect", ""))
 		var power_value: Variant = choice.get("power", -1)
-		if not power_value is int:
+		if not _is_whole_number(power_value):
 			errors.append("%s power must be an integer" % move_id)
 			continue
-		var power: int = power_value
+		# JSON.parse_string() represents JSON numbers as floats. Convert only
+		# mathematically integral values before they enter the simulation.
+		var power := int(power_value)
 		if not catalog.moves.has(move_id):
 			errors.append("unknown move: %s" % move_id)
 			continue
@@ -75,10 +77,10 @@ func validate(build: Dictionary) -> Dictionary:
 
 	var shield_value: Variant = build.get("shield", -1)
 	var shield := 0
-	if not shield_value is int:
+	if not _is_whole_number(shield_value):
 		errors.append("shield must be an integer")
 	else:
-		shield = shield_value
+		shield = int(shield_value)
 		if shield < 0 or shield > GameConfig.BUILD_BUDGET:
 			errors.append("shield must be between 0 and %d" % GameConfig.BUILD_BUDGET)
 		else:
@@ -100,3 +102,10 @@ func _max_useful_power(move_id: String) -> int:
 	var rate: int = int(catalog.moves[move_id]["damage_rate"])
 	return (GameConfig.MAX_DAMAGE_PER_HIT * 100 + rate - 1) / rate
 
+
+func _is_whole_number(value: Variant) -> bool:
+	if value is int:
+		return true
+	if value is float:
+		return is_finite(value) and value == floor(value)
+	return false

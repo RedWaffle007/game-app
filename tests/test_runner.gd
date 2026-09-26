@@ -45,11 +45,20 @@ func _test_catalog_and_costs() -> void:
 
 
 func _test_build_validation() -> void:
+	var json_shaped := {"shield": 400.0, "moves": [
+		{"id": "jab", "power": 25.0}, {"id": "straight_punch", "power": 25.0},
+		{"id": "front_kick", "power": 25.0}, {"id": "low_sweep", "power": 5.0},
+	]}
+	var result := validator.validate(json_shaped)
+	_expect(not _has_error(result, "must be an integer"), "integral JSON numbers are normalized at the boundary")
+	json_shaped["moves"][0]["power"] = 25.5
+	_expect(_has_error(validator.validate(json_shaped), "must be an integer"), "fractional JSON numbers are rejected")
+
 	var duplicate := {"shield": 400, "moves": [
 		{"id": "jab", "power": 25}, {"id": "jab", "power": 25},
 		{"id": "front_kick", "power": 25}, {"id": "low_sweep", "power": 5},
 	]}
-	var result := validator.validate(duplicate)
+	result = validator.validate(duplicate)
 	_expect(not result["valid"], "duplicate moves and sub-minimum power are rejected")
 	_expect(_has_error(result, "only be selected once"), "duplicate move error is reported")
 	_expect(_has_error(result, "at least 25 power"), "minimum attack power error is reported")
