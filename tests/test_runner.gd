@@ -4,6 +4,7 @@ const CombatantStateScript := preload("res://src/sim/combatant_state.gd")
 const CombatExchangeScript := preload("res://src/sim/combat_exchange.gd")
 const MovementRulesScript := preload("res://src/sim/movement_rules.gd")
 const MatchSimulationScript := preload("res://src/sim/match_simulation.gd")
+const MatchSessionScript := preload("res://src/sim/match_session.gd")
 
 var catalog: FighterCatalog
 var validator: BuildValidator
@@ -33,6 +34,7 @@ func _init() -> void:
 	_test_movement()
 	_test_match_ticks_and_buffer()
 	_test_hit_stop()
+	_test_match_session()
 	_test_example_builds_and_simulation()
 	if failures == 0:
 		print("PASS: %d checks" % checks)
@@ -722,6 +724,75 @@ func _test_hit_stop() -> void:
 	match_state = MatchSimulationScript.new(first, second, catalog)
 	step = match_state.advance({"action": {"kind": "basic"}}, {"action": {"kind": "shield"}})
 	_expect(step["attacks"]["first_hit"]["damage"] == 0 and step["hit_stop_ticks_left"] == GameConfig.HIT_STOP_BASE_TICKS, "a fully parried contact still causes base hit-stop")
+
+
+func _test_match_session() -> void:
+	_expect(GameConfig.ROUND_TICKS == 90 * GameConfig.TICKS_PER_SECOND, "round clock is ninety seconds at fixed tick rate")
+	var jab := [{"id": "jab", "charges": 1, "damage": 100, "effect": "", "flourish": false}]
+	var first := CombatantStateScript.new("first", jab, 0, -60)
+	var second := CombatantStateScript.new("second", [], 0, 0)
+	var session := MatchSessionScript.new(first, second, catalog)
+	second.hp = 100
+	var result: Dictionary = session.advance({"action": {"kind": "move", "id": "jab"}}, {})
+	_expect(result["phase"] == "round_over" and session.first_rounds_won == 1, "KO awards a round but leaves an explicit result phase")
+	_expect(session.round_ticks_left == GameConfig.ROUND_TICKS - 1, "round clock advances on a played tick")
+	var frozen_result: Dictionary = session.snapshot()
+	result = session.advance({"action": {"kind": "basic"}}, {})
+	_expect(not result["accepted"] and session.snapshot() == frozen_result, "round-over phase ignores gameplay input until transition")
+	_expect(session.start_next_round(), "next round can start after the result phase")
+	_expect(second.hp == GameConfig.MAX_HP and first.moves["jab"]["charges"] == 1 and session.round_ticks_left == GameConfig.ROUND_TICKS, "new round restores HP, charges, and clock")
+	first.hp = 20
+	result = session.advance({}, {"action": {"kind": "basic"}})
+	_expect(result["round_winner"] == "second" and session.second_rounds_won == 1, "second fighter can tie the match at one round each")
+	_expect(session.start_next_round() and session.round_number == 3, "third round starts at one-one")
+	second.hp = 100
+	result = session.advance({"action": {"kind": "move", "id": "jab"}}, {})
+	_expect(result["phase"] == "match_over" and result["match_winner"] == "first", "second round win ends a best-of-three match")
+	_expect(not session.start_next_round() and not session.advance()["accepted"], "completed match cannot start or advance another round")
+
+	first = CombatantStateScript.new("first", [], 0, -60)
+	second = CombatantStateScript.new("second", [], 0, 0)
+	session = MatchSessionScript.new(first, second, catalog)
+	second.hp = 900
+	session.round_ticks_left = 1
+	result = session.advance()
+	_expect(result["phase"] == "round_over" and result["round_winner"] == "first", "timeout awards the round to the fighter with more HP")
+	first = CombatantStateScript.new("first", [], 0, -60)
+	second = CombatantStateScript.new("second", [], 0, 0)
+	session = MatchSessionScript.new(first, second, catalog)
+	session.advance({"action": {"kind": "basic"}}, {})
+	var clock_before_freeze: int = session.round_ticks_left
+	result = session.advance()
+	_expect(result["step"]["hit_stop"] and session.round_ticks_left == clock_before_freeze - 1, "round clock counts real ticks even during hit-stop")
+
+	first = CombatantStateScript.new("first", [], 0, -60)
+	second = CombatantStateScript.new("second", [], 100, 0)
+	session = MatchSessionScript.new(first, second, catalog)
+	session.round_ticks_left = 1
+	result = session.advance()
+	_expect(result["phase"] == "sudden_death" and session.round_ticks_left == 0, "equal HP at timeout enters sudden death")
+	result = session.advance({"action": {"kind": "basic"}}, {"action": {"kind": "shield"}})
+	_expect(result["phase"] == "sudden_death" and result["step"]["attacks"]["first_hit"]["damage"] == 0, "a parried hit cannot win sudden death")
+	for ignored in GameConfig.HIT_STOP_BASE_TICKS:
+		session.advance()
+	result = session.advance({"action": {"kind": "basic"}}, {})
+	_expect(result["phase"] == "round_over" and result["round_winner"] == "first" and second.hp > 0, "first damaging hit wins sudden death without requiring KO")
+	first = CombatantStateScript.new("first", [], 0, -60)
+	second = CombatantStateScript.new("second", [], 0, 0)
+	session = MatchSessionScript.new(first, second, catalog)
+	session.round_ticks_left = 1
+	session.advance()
+	result = session.advance({"action": {"kind": "basic"}}, {"action": {"kind": "basic"}})
+	_expect(result["round_winner"] == "draw" and session.first_rounds_won == 0 and session.second_rounds_won == 0, "simultaneous damaging sudden-death hits count as a draw")
+
+	first = CombatantStateScript.new("first", [], 0, -60)
+	second = CombatantStateScript.new("second", [], 0, 0)
+	session = MatchSessionScript.new(first, second, catalog)
+	first.hp = 20
+	second.hp = 20
+	result = session.advance({"action": {"kind": "basic"}}, {"action": {"kind": "basic"}})
+	_expect(result["round_winner"] == "draw" and session.first_rounds_won == 0 and session.second_rounds_won == 0, "simultaneous KO replays the round without a win")
+	_expect(session.start_next_round() and first.hp == GameConfig.MAX_HP and second.hp == GameConfig.MAX_HP, "drawn round resets both fighters")
 
 
 func _test_example_builds_and_simulation() -> void:

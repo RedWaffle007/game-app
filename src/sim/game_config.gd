@@ -2,6 +2,9 @@ class_name GameConfig
 extends RefCounted
 
 const TICKS_PER_SECOND := 60
+const ROUND_SECONDS := 90
+const ROUND_TICKS := ROUND_SECONDS * TICKS_PER_SECOND
+const ROUNDS_TO_WIN := 2
 const MAX_HP := 1000
 const BUILD_BUDGET := 500
 const MAX_MOVES := 4

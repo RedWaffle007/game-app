@@ -19,6 +19,7 @@ Phase 0 has started with a pure-logic simulation foundation:
 - fixed-tick walk, jump/double jump, dash, and duck movement with arena spacing
 - a single match tick with a six-tick button buffer and deterministic action order
 - shared, damage-scaled hit-stop that pauses gameplay timers but retains button presses
+- best-of-three round scoring, a 90-second clock, and tied-HP sudden death
 - combo scaling after Stagger or Uppercut, with a three-hit airborne limit
 - timed-effect replacement and deterministic damage-over-time ticks
 - a deterministic build-vs-build smoke simulator that advances timed effects
@@ -38,6 +39,9 @@ freeze remain buffered until gameplay resumes.
 Uppercut currently uses a 45-tick airborne timer as a balance placeholder.
 The match tick advances projectiles after checked actions, so a Fireball can
 contact a nearby fighter on its launch tick.
+`MatchSession` wraps the tick simulation with round results. Call
+`start_next_round()` after presenting a result; simultaneous KOs or damaging
+sudden-death trades are draws and replay the round without awarding a win.
 
 Run the tests with Godot 4. The wrapper first performs a compile-only pass so
 parser errors cannot be mistaken for a successful assertion run:
