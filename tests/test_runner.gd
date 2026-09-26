@@ -27,6 +27,7 @@ func _init() -> void:
 	_test_stagger_push_and_round_reset()
 	_test_combo_flow()
 	_test_hit_geometry()
+	_test_projectiles()
 	_test_example_builds_and_simulation()
 	if failures == 0:
 		print("PASS: %d checks" % checks)
@@ -502,6 +503,58 @@ func _test_hit_geometry() -> void:
 	_expect(defender.begin_move("jab"), "defender starts a wind-up before a normal hit")
 	attempt = exchange.resolve_attempts(attacker, defender, {"kind": "basic"}, {})
 	_expect(attempt["first_hit"]["damage"] == 20 and defender.windup_move_id == "jab", "normal hit deals damage without cancelling wind-up")
+
+
+func _test_projectiles() -> void:
+	var exchange := CombatExchangeScript.new(catalog)
+	var fireball := [{"id": "fireball", "charges": 2, "damage": 100, "effect": "", "flourish": false}]
+	var first := CombatantStateScript.new("first", fireball, 0, -250)
+	var second := CombatantStateScript.new("second", [], 0, 250)
+	var launched: Dictionary = exchange.resolve_attempts(first, second, {"kind": "move", "id": "fireball"}, {})
+	_expect(launched["first_hit"].is_empty() and second.hp == GameConfig.MAX_HP, "Fireball launch deals no immediate damage")
+	_expect(first.moves["fireball"]["charges"] == 1 and not first.active_projectile.is_empty(), "launch spends one charge and creates one projectile")
+	exchange.resolve_attempts(first, second, {"kind": "move", "id": "fireball"}, {})
+	_expect(first.moves["fireball"]["charges"] == 1, "one-active-Fireball limit rejects another launch without charge loss")
+	var projectile_x: int = first.active_projectile["x"]
+	exchange.advance_projectiles(first, second)
+	_expect(first.active_projectile["x"] == projectile_x + int(catalog.moves["fireball"]["projectile_speed"]), "Fireball advances an integer distance each tick")
+	first.reset_round()
+	_expect(first.active_projectile.is_empty() and first.moves["fireball"]["charges"] == 2, "round reset clears projectile and restores its charges")
+
+	first = CombatantStateScript.new("first", [{"id": "fireball", "charges": 1, "damage": 100, "effect": "poison", "flourish": false}], 0, -40)
+	second = CombatantStateScript.new("second", [], 0, 40)
+	exchange.resolve_attempts(first, second, {"kind": "move", "id": "fireball"}, {})
+	var impact: Dictionary = exchange.advance_projectiles(first, second)
+	_expect(impact["first_hit"]["damage"] == 100 and first.active_projectile.is_empty(), "Fireball damages a fighter only on contact")
+	_expect(second.active_effects.has("poison"), "projectile contact applies its attached effect")
+
+	first = CombatantStateScript.new("first", fireball, 0, -40)
+	second = CombatantStateScript.new("second", [], 100, 40)
+	_expect(second.activate_shield(), "projectile target activates its shield")
+	exchange.resolve_attempts(first, second, {"kind": "move", "id": "fireball"}, {})
+	impact = exchange.advance_projectiles(first, second)
+	_expect(impact["first_hit"]["damage"] == 0 and not second.shield.active, "active shield parries a Fireball on contact")
+	_expect(second.hp == GameConfig.MAX_HP, "parried Fireball deals no damage")
+
+	first = CombatantStateScript.new("first", fireball, 0, -40)
+	second = CombatantStateScript.new("second", [], 0, 40)
+	_expect(second.set_ducking(true), "projectile target ducks")
+	exchange.resolve_attempts(first, second, {"kind": "move", "id": "fireball"}, {})
+	for ignored in 40:
+		exchange.advance_projectiles(first, second)
+	_expect(second.hp == GameConfig.MAX_HP and first.active_projectile.is_empty(), "high Fireball passes over ducking target and expires")
+
+	first = CombatantStateScript.new("first", fireball, 0, -250)
+	second = CombatantStateScript.new("second", fireball, 0, 250)
+	exchange.resolve_attempts(first, second, {"kind": "move", "id": "fireball"}, {"kind": "move", "id": "fireball"})
+	var cancelled := false
+	for ignored in 10:
+		var step: Dictionary = exchange.advance_projectiles(first, second)
+		if step["projectiles_cancelled"]:
+			cancelled = true
+			break
+	_expect(cancelled and first.active_projectile.is_empty() and second.active_projectile.is_empty(), "opposing Fireballs cancel when their paths meet")
+	_expect(first.hp == GameConfig.MAX_HP and second.hp == GameConfig.MAX_HP, "projectile cancellation damages neither fighter")
 
 
 func _test_example_builds_and_simulation() -> void:

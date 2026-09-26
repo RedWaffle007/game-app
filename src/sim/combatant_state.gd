@@ -11,6 +11,7 @@ var round_start_x := 0
 var round_start_facing := 1
 var moves: Dictionary = {}
 var move_order: Array[String] = []
+var active_projectile: Dictionary = {}
 var active_effects: Dictionary = {}
 var last_used_move_id := ""
 var windup_move_id := ""
@@ -98,6 +99,7 @@ func reset_round() -> void:
 		var move: Dictionary = moves[move_id]
 		move["charges"] = int(move["max_charges"])
 		moves[move_id] = move
+	active_projectile.clear()
 	active_effects.clear()
 	last_used_move_id = ""
 	windup_move_id = ""
@@ -224,6 +226,7 @@ func snapshot() -> Dictionary:
 		"round_start_facing": round_start_facing,
 		"moves": moves.duplicate(true),
 		"move_order": move_order.duplicate(),
+		"active_projectile": active_projectile.duplicate(true),
 		"active_effects": active_effects.duplicate(true),
 		"last_used_move_id": last_used_move_id,
 		"windup_move_id": windup_move_id,

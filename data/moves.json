@@ -7,6 +7,6 @@
   "uppercut": {"name": "Uppercut", "base_cost": 30, "damage_rate": 90, "height": "mid", "air": true, "range": 100, "hitbox_min_y": 40, "hitbox_max_y": 210, "launch": true},
   "heavy_smash": {"name": "Heavy Smash", "base_cost": 0, "damage_rate": 130, "height": "mid", "air": false, "range": 120, "hitbox_min_y": 30, "hitbox_max_y": 180, "overhead": true},
   "dash_strike": {"name": "Dash Strike", "base_cost": 40, "damage_rate": 90, "height": "mid", "air": true, "range": 160, "hitbox_min_y": 45, "hitbox_max_y": 155, "moves_attacker": true},
-  "fireball": {"name": "Fireball", "base_cost": 40, "damage_rate": 80, "height": "high", "air": true, "range": 1000, "hitbox_min_y": 110, "hitbox_max_y": 170, "projectile": true, "max_active": 1},
+  "fireball": {"name": "Fireball", "base_cost": 40, "damage_rate": 80, "height": "high", "air": true, "range": 1000, "hitbox_min_y": 110, "hitbox_max_y": 170, "projectile": true, "projectile_speed": 30, "projectile_radius": 12, "max_active": 1},
   "spinning_slash": {"name": "Spinning Slash", "base_cost": 50, "damage_rate": 80, "height": "mid", "air": true, "range": 130, "hitbox_min_y": 40, "hitbox_max_y": 180, "hits_behind": true}
 }

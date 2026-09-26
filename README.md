@@ -15,6 +15,7 @@ Phase 0 has started with a pure-logic simulation foundation:
 - Stagger pushback and full combatant reset between rounds
 - playable Flourish actions with no combat utility or charge use
 - catalog ranges and vertical hitboxes for checked attack attempts
+- deterministic Fireball travel, parries, ducking, and projectile cancellation
 - combo scaling after Stagger or Uppercut, with a three-hit airborne limit
 - timed-effect replacement and deterministic damage-over-time ticks
 - a deterministic build-vs-build smoke simulator that advances timed effects
@@ -25,7 +26,8 @@ close/long range targets are tuning defaults in `GameConfig`. The smoke
 simulator supplies landed attacks; `CombatExchange.resolve_attempts()` checks
 range and hurtboxes for gameplay calls. Movement input is still pending.
 Uppercut currently uses a 45-tick airborne timer as a balance placeholder.
-Fireball travel and projectile cancellation are not simulated yet.
+Call `CombatExchange.advance_projectiles()` once per simulation tick after
+checked actions to move Fireballs and resolve their contacts.
 
 Run the tests with Godot 4. The wrapper first performs a compile-only pass so
 parser errors cannot be mistaken for a successful assertion run:

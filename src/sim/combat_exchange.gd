@@ -3,16 +3,19 @@ extends RefCounted
 
 const SpatialRulesScript := preload("res://src/sim/spatial_rules.gd")
 const HitGeometryScript := preload("res://src/sim/hit_geometry.gd")
+const ProjectileRulesScript := preload("res://src/sim/projectile_rules.gd")
 
 var resolver: CombatResolver
 var spatial: RefCounted
 var geometry: RefCounted
+var projectiles: RefCounted
 
 
 func _init(source_catalog: FighterCatalog = null) -> void:
 	resolver = CombatResolver.new(source_catalog)
 	spatial = SpatialRulesScript.new()
 	geometry = HitGeometryScript.new()
+	projectiles = ProjectileRulesScript.new()
 
 
 ## Resolve both declared attacks against the state at the start of the tick.
@@ -28,9 +31,21 @@ func resolve_attempts(first: RefCounted, second: RefCounted, first_action: Dicti
 	return _resolve_pair(first, second, first_action, second_action, true)
 
 
+## Called once per simulation tick; fighter.tick() handles other timers.
+func advance_projectiles(first: RefCounted, second: RefCounted) -> Dictionary:
+	var events: Dictionary = projectiles.advance(first, second)
+	var first_attack: Dictionary = events["first_attack"]
+	var second_attack: Dictionary = events["second_attack"]
+	var first_hit := _resolve_one(first_attack, first, second, false)
+	var second_hit := _resolve_one(second_attack, second, first, false)
+	var result := _commit_hits(first, second, first_attack, second_attack, first_hit, second_hit)
+	result["projectiles_cancelled"] = events["cancelled"]
+	return result
+
+
 func _resolve_pair(first: RefCounted, second: RefCounted, first_action: Dictionary, second_action: Dictionary, check_geometry: bool) -> Dictionary:
-	var first_attack := _prepare(first, first_action)
-	var second_attack := _prepare(second, second_action)
+	var first_attack := _prepare(first, first_action, check_geometry)
+	var second_attack := _prepare(second, second_action, check_geometry)
 	# Actions that land this tick have finished wind-up. Shock only refunds a
 	# previously pending wind-up, never an attack that already connected.
 	if not first_attack.is_empty():
@@ -39,6 +54,10 @@ func _resolve_pair(first: RefCounted, second: RefCounted, first_action: Dictiona
 		second.finish_windup()
 	var first_hit := _resolve_one(first_attack, first, second, check_geometry)
 	var second_hit := _resolve_one(second_attack, second, first, check_geometry)
+	return _commit_hits(first, second, first_attack, second_attack, first_hit, second_hit)
+
+
+func _commit_hits(first: RefCounted, second: RefCounted, first_attack: Dictionary, second_attack: Dictionary, first_hit: Dictionary, second_hit: Dictionary) -> Dictionary:
 	var first_hp_before: int = first.hp
 	var second_hp_before: int = second.hp
 	var first_was_airborne: bool = first.airborne_ticks_left > 0
@@ -68,7 +87,7 @@ func _resolve_pair(first: RefCounted, second: RefCounted, first_action: Dictiona
 	return {"first_hit": first_hit, "second_hit": second_hit, "positions": positions}
 
 
-func _prepare(fighter: RefCounted, action: Dictionary) -> Dictionary:
+func _prepare(fighter: RefCounted, action: Dictionary, check_geometry: bool) -> Dictionary:
 	var kind: String = str(action.get("kind", ""))
 	if kind == "basic":
 		if fighter.can_basic_attack():
@@ -83,11 +102,16 @@ func _prepare(fighter: RefCounted, action: Dictionary) -> Dictionary:
 		return {}
 	if kind == "move":
 		var move_id: String = str(action.get("id", ""))
+		var move_data: Dictionary = resolver.catalog.moves.get(move_id, {})
+		if check_geometry and bool(move_data.get("projectile", false)) and not fighter.active_projectile.is_empty():
+			return {}
 		if fighter.begin_move(move_id):
 			var move: Dictionary = fighter.moves[move_id]
 			if bool(move.get("flourish", false)):
 				return {"kind": "flourish", "id": move_id}
-			var move_data: Dictionary = resolver.catalog.moves.get(move_id, {})
+			if check_geometry and bool(move_data.get("projectile", false)):
+				projectiles.spawn(fighter, {"id": move_id, "damage": int(move["damage"]), "effect": str(move["effect"])}, move_data)
+				return {"kind": "projectile_spawn", "id": move_id}
 			return {
 				"damage": int(move["damage"]),
 				"effect": str(move["effect"]),
@@ -103,7 +127,7 @@ func _prepare(fighter: RefCounted, action: Dictionary) -> Dictionary:
 
 
 func _resolve_one(attack: Dictionary, attacker: RefCounted, defender: RefCounted, check_geometry: bool) -> Dictionary:
-	if attack.is_empty() or str(attack.get("kind", "")) == "flourish":
+	if attack.is_empty() or str(attack.get("kind", "")) == "flourish" or str(attack.get("kind", "")) == "projectile_spawn":
 		return {}
 	if check_geometry and not geometry.connects(attacker, defender, attack):
 		return {}
