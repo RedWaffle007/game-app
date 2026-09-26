@@ -16,7 +16,7 @@ func resolve(first_x: int, second_x: int, first_hit: Dictionary, second_hit: Dic
 			"first_bounced": first_result["bounced"],
 			"second_bounced": second_result["bounced"],
 		}
-	var settled := _keep_spacing(proposed_first, proposed_second, first_x <= second_x)
+	var settled := settle_positions(proposed_first, proposed_second, first_x <= second_x)
 	return {
 		"first_x": settled["first_x"],
 		"second_x": settled["second_x"],
@@ -65,11 +65,14 @@ func _target_x(attacker_x: int, defender_x: int, application: Dictionary) -> Dic
 	return result
 
 
-func _keep_spacing(first_x: int, second_x: int, first_was_left: bool) -> Dictionary:
+## Clamp both fighters to the arena while preserving their original sides.
+func settle_positions(first_x: int, second_x: int, first_was_left: bool) -> Dictionary:
+	var edge := GameConfig.ARENA_HALF_WIDTH
+	first_x = clampi(first_x, -edge, edge)
+	second_x = clampi(second_x, -edge, edge)
 	var left := first_x if first_was_left else second_x
 	var right := second_x if first_was_left else first_x
 	var gap := GameConfig.MIN_FIGHTER_SPACING
-	var edge := GameConfig.ARENA_HALF_WIDTH
 	if right - left < gap:
 		var overlap := gap - (right - left)
 		left = maxi(-edge, left - overlap / 2)

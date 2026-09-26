@@ -19,6 +19,10 @@ var control_ticks_left := 0
 var control_immunity_ticks_left := 0
 var airborne_ticks_left := 0
 var airborne_hits_taken := 0
+var vertical_speed := 0
+var jumps_used := 0
+var dash_ticks_left := 0
+var dash_direction := 0
 var combo_source := ""
 var combo_hits_taken := 0
 var shield: ShieldRuntime
@@ -43,7 +47,7 @@ func begin_move(move_id: String) -> bool:
 	if control_ticks_left > 0 or ducking or shield.active or shield.recovery_ticks_left > 0 or windup_move_id != "" or not moves.has(move_id):
 		return false
 	var move: Dictionary = moves[move_id]
-	if airborne_ticks_left > 0 and not bool(move.get("air_allowed", true)):
+	if y > 0 and not bool(move.get("air_allowed", true)):
 		return false
 	if bool(move.get("flourish", false)):
 		windup_move_id = move_id
@@ -80,6 +84,8 @@ func set_ducking(wants_to_duck: bool) -> bool:
 
 func land() -> void:
 	y = 0
+	vertical_speed = 0
+	jumps_used = 0
 	airborne_ticks_left = 0
 	airborne_hits_taken = 0
 	if combo_source == "uppercut":
@@ -107,6 +113,10 @@ func reset_round() -> void:
 	control_immunity_ticks_left = 0
 	airborne_ticks_left = 0
 	airborne_hits_taken = 0
+	vertical_speed = 0
+	jumps_used = 0
+	dash_ticks_left = 0
+	dash_direction = 0
 	_clear_combo()
 	shield.reset_round()
 
@@ -132,6 +142,8 @@ func register_landed_hit(attack: Dictionary, hit: Dictionary, was_airborne: bool
 		airborne_hits_taken += 1
 	if bool(attack.get("launch", false)):
 		y = GameConfig.LAUNCH_HURTBOX_BOTTOM_Y
+		vertical_speed = 0
+		jumps_used = 1
 		ducking = false
 		airborne_ticks_left = GameConfig.UPPERCUT_AIRBORNE_TICKS
 		if not was_airborne:
@@ -188,6 +200,7 @@ func apply_heal(amount: int) -> void:
 ## Advances all gameplay state by exactly one simulation tick and returns damage
 ## caused by timed effects during that tick.
 func tick() -> int:
+	var was_launched := airborne_ticks_left > 0
 	var timed_damage := 0
 	for effect_id: String in ["burn", "poison"]:
 		timed_damage += EffectRuntime.tick_timed_damage(active_effects, effect_id)
@@ -197,8 +210,10 @@ func tick() -> int:
 	control_immunity_ticks_left = maxi(0, control_immunity_ticks_left - 1)
 	airborne_ticks_left = maxi(0, airborne_ticks_left - 1)
 	if airborne_ticks_left == 0:
-		if y == GameConfig.LAUNCH_HURTBOX_BOTTOM_Y:
+		if was_launched:
 			y = 0
+			vertical_speed = 0
+			jumps_used = 0
 		airborne_hits_taken = 0
 		if combo_source == "uppercut":
 			if control_ticks_left > 0:
@@ -234,6 +249,10 @@ func snapshot() -> Dictionary:
 		"control_immunity_ticks_left": control_immunity_ticks_left,
 		"airborne_ticks_left": airborne_ticks_left,
 		"airborne_hits_taken": airborne_hits_taken,
+		"vertical_speed": vertical_speed,
+		"jumps_used": jumps_used,
+		"dash_ticks_left": dash_ticks_left,
+		"dash_direction": dash_direction,
 		"combo_source": combo_source,
 		"combo_hits_taken": combo_hits_taken,
 		"shield": shield.snapshot(),

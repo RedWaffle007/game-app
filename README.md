@@ -16,6 +16,7 @@ Phase 0 has started with a pure-logic simulation foundation:
 - playable Flourish actions with no combat utility or charge use
 - catalog ranges and vertical hitboxes for checked attack attempts
 - deterministic Fireball travel, parries, ducking, and projectile cancellation
+- fixed-tick walk, jump/double jump, dash, and duck movement with arena spacing
 - combo scaling after Stagger or Uppercut, with a three-hit airborne limit
 - timed-effect replacement and deterministic damage-over-time ticks
 - a deterministic build-vs-build smoke simulator that advances timed effects
@@ -24,7 +25,9 @@ Phase 0 has started with a pure-logic simulation foundation:
 Arena distances are integer simulation units. The current arena bounds and
 close/long range targets are tuning defaults in `GameConfig`. The smoke
 simulator supplies landed attacks; `CombatExchange.resolve_attempts()` checks
-range and hurtboxes for gameplay calls. Movement input is still pending.
+range and hurtboxes for gameplay calls. `MovementRules.advance()` accepts both
+fighters' integer directions and jump/dash/duck presses once per tick; a touch
+control layer is still pending.
 Uppercut currently uses a 45-tick airborne timer as a balance placeholder.
 Call `CombatExchange.advance_projectiles()` once per simulation tick after
 checked actions to move Fireballs and resolve their contacts.

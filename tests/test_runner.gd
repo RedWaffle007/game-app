@@ -2,6 +2,7 @@ extends SceneTree
 
 const CombatantStateScript := preload("res://src/sim/combatant_state.gd")
 const CombatExchangeScript := preload("res://src/sim/combat_exchange.gd")
+const MovementRulesScript := preload("res://src/sim/movement_rules.gd")
 
 var catalog: FighterCatalog
 var validator: BuildValidator
@@ -28,6 +29,7 @@ func _init() -> void:
 	_test_combo_flow()
 	_test_hit_geometry()
 	_test_projectiles()
+	_test_movement()
 	_test_example_builds_and_simulation()
 	if failures == 0:
 		print("PASS: %d checks" % checks)
@@ -555,6 +557,68 @@ func _test_projectiles() -> void:
 			break
 	_expect(cancelled and first.active_projectile.is_empty() and second.active_projectile.is_empty(), "opposing Fireballs cancel when their paths meet")
 	_expect(first.hp == GameConfig.MAX_HP and second.hp == GameConfig.MAX_HP, "projectile cancellation damages neither fighter")
+
+
+func _test_movement() -> void:
+	var movement := MovementRulesScript.new()
+	var first := CombatantStateScript.new("first", [], 0, -100)
+	var second := CombatantStateScript.new("second", [], 0, 100)
+	movement.advance(first, second, {"horizontal": 1}, {"horizontal": -1})
+	_expect(first.x == -95 and second.x == 95, "fighters walk at fixed integer speed on the same tick")
+	movement.advance(first, second, {"horizontal": 1, "duck": true}, {})
+	_expect(first.ducking and first.x == -95, "ducking lowers the hurtbox and prevents walking")
+	movement.advance(first, second, {"horizontal": 1}, {})
+	_expect(not first.ducking and first.x == -90, "releasing duck restores walking")
+	movement.advance(first, second, {"jump": true}, {})
+	_expect(first.y == GameConfig.JUMP_SPEED and first.jumps_used == 1, "jump rises on the input tick")
+	for ignored in 5:
+		movement.advance(first, second, {}, {})
+	var before_double: int = first.y
+	movement.advance(first, second, {"jump": true}, {})
+	_expect(first.y > before_double and first.jumps_used == 2, "one airborne double jump restarts upward speed")
+	var before_third_speed: int = first.vertical_speed
+	movement.advance(first, second, {"jump": true}, {})
+	_expect(first.jumps_used == 2 and first.vertical_speed == before_third_speed - GameConfig.GRAVITY_PER_TICK, "a third jump is ignored")
+	for ignored in 50:
+		movement.advance(first, second, {}, {})
+	_expect(first.y == 0 and first.jumps_used == 0, "landing resets the jump count")
+	var sweep := [{"id": "low_sweep", "charges": 1, "damage": 50, "effect": "", "flourish": false, "air_allowed": false}]
+	first = CombatantStateScript.new("first", sweep, 0, -100)
+	second = CombatantStateScript.new("second", [], 0, 100)
+	movement.advance(first, second, {"jump": true}, {})
+	_expect(not first.begin_move("low_sweep") and not first.set_ducking(true), "ground-only moves and ducking are blocked during a normal jump")
+	first = CombatantStateScript.new("first", sweep, 0, -60)
+	second = CombatantStateScript.new("second", [], 0, 0)
+	movement.advance(second, first, {"jump": true}, {})
+	for ignored in 5:
+		movement.advance(second, first, {}, {})
+	var exchange := CombatExchangeScript.new(catalog)
+	var whiff: Dictionary = exchange.resolve_attempts(first, second, {"kind": "move", "id": "low_sweep"}, {})
+	_expect(whiff["first_hit"].is_empty() and second.y > int(catalog.moves["low_sweep"]["hitbox_max_y"]), "jump height physically avoids a low sweep")
+	first = CombatantStateScript.new("first", [], 0, -100)
+	second = CombatantStateScript.new("second", [], 0, 100)
+	movement.advance(first, second, {"horizontal": 1, "dash": true}, {})
+	_expect(first.x == -100 + GameConfig.DASH_SPEED and first.dash_ticks_left == GameConfig.DASH_TICKS - 1, "dash starts its short fixed-speed burst")
+	movement.advance(first, second, {"horizontal": -1}, {})
+	_expect(first.x == -100 + 2 * GameConfig.DASH_SPEED, "dash keeps its chosen direction until the burst ends")
+	first.control_ticks_left = 3
+	movement.advance(first, second, {"horizontal": 1, "dash": true}, {})
+	_expect(first.x == -100 + 2 * GameConfig.DASH_SPEED and first.dash_ticks_left == 0, "control effects stop movement and active dashes")
+	first = CombatantStateScript.new("first", [], 0, -GameConfig.ARENA_HALF_WIDTH)
+	second = CombatantStateScript.new("second", [], 0, GameConfig.ARENA_HALF_WIDTH)
+	movement.advance(first, second, {"horizontal": -1}, {"horizontal": 1})
+	_expect(first.x == -GameConfig.ARENA_HALF_WIDTH and second.x == GameConfig.ARENA_HALF_WIDTH, "walk inputs cannot cross arena walls")
+	first.x = -GameConfig.MIN_FIGHTER_SPACING / 2
+	second.x = GameConfig.MIN_FIGHTER_SPACING / 2
+	movement.advance(first, second, {"horizontal": 1}, {"horizontal": -1})
+	_expect(second.x - first.x == GameConfig.MIN_FIGHTER_SPACING and first.x < second.x, "opposing walks keep the minimum fighter spacing")
+	first.y = GameConfig.LAUNCH_HURTBOX_BOTTOM_Y
+	first.airborne_ticks_left = GameConfig.UPPERCUT_AIRBORNE_TICKS
+	first.jumps_used = 1
+	movement.advance(first, second, {"jump": true}, {})
+	_expect(first.jumps_used == 2 and first.y > GameConfig.LAUNCH_HURTBOX_BOTTOM_Y, "launched fighter retains its double jump")
+	first.reset_round()
+	_expect(first.vertical_speed == 0 and first.jumps_used == 0 and first.dash_ticks_left == 0, "round reset clears movement state")
 
 
 func _test_example_builds_and_simulation() -> void:
