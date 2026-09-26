@@ -1,0 +1,13 @@
+# Godot-generated editor/import state
+.godot/
+
+# Local exports and platform build products
+builds/
+*.apk
+*.aab
+
+# Local IDE and OS metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

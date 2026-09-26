@@ -1,0 +1,12 @@
+{
+  "burn": {"name": "Burn", "cost": 40, "kind": "timed_damage", "total": 30, "duration_ticks": 180},
+  "poison": {"name": "Poison", "cost": 60, "kind": "timed_damage", "total": 40, "duration_ticks": 480},
+  "knockback": {"name": "Knockback", "cost": 40, "kind": "displacement", "direction": 1},
+  "pull": {"name": "Pull", "cost": 40, "kind": "displacement", "direction": -1},
+  "guard_break": {"name": "Guard Break", "cost": 70, "kind": "guard_break"},
+  "weaken": {"name": "Weaken", "cost": 70, "kind": "weaken", "percent": 20, "duration_ticks": 180},
+  "lifesteal": {"name": "Lifesteal", "cost": 80, "kind": "lifesteal", "percent": 30},
+  "stagger": {"name": "Stagger", "cost": 80, "kind": "control", "duration_ticks": 36},
+  "charge_drain": {"name": "Charge Drain", "cost": 90, "kind": "charge_drain", "threshold_percent": 50},
+  "shock": {"name": "Shock", "cost": 100, "kind": "shock", "duration_ticks": 30, "threshold_percent": 50}
+}

@@ -1,0 +1,7 @@
+{
+  "balanced": {"shield": 0, "moves": [{"id": "straight_punch", "power": 125}, {"id": "front_kick", "power": 115}, {"id": "sword_slash", "power": 110}, {"id": "jab", "power": 125}]},
+  "glass_cannon": {"shield": 0, "moves": [{"id": "heavy_smash", "power": 385}, {"id": "straight_punch", "power": 115}, {"id": "jab", "power": 0}, {"id": "front_kick", "power": 0}]},
+  "poisoner": {"shield": 200, "moves": [{"id": "dash_strike", "power": 100, "effect": "poison"}, {"id": "jab", "power": 100}, {"id": "front_kick", "power": 0}, {"id": "sword_slash", "power": 0}]},
+  "pure_nuke": {"shield": 115, "moves": [{"id": "heavy_smash", "power": 385}, {"id": "jab", "power": 0}, {"id": "front_kick", "power": 0}, {"id": "sword_slash", "power": 0}]},
+  "turtle": {"shield": 300, "moves": [{"id": "jab", "power": 100}, {"id": "straight_punch", "power": 100}, {"id": "front_kick", "power": 0}, {"id": "sword_slash", "power": 0}]}
+}

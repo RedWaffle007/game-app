@@ -1,0 +1,12 @@
+{
+  "jab": {"name": "Jab", "base_cost": 0, "damage_rate": 80, "height": "high", "air": true},
+  "straight_punch": {"name": "Straight Punch", "base_cost": 0, "damage_rate": 100, "height": "high", "air": true},
+  "front_kick": {"name": "Front Kick", "base_cost": 10, "damage_rate": 100, "height": "mid", "air": true},
+  "low_sweep": {"name": "Low Sweep", "base_cost": 10, "damage_rate": 90, "height": "low", "air": false},
+  "sword_slash": {"name": "Sword Slash", "base_cost": 15, "damage_rate": 100, "height": "mid", "air": true},
+  "uppercut": {"name": "Uppercut", "base_cost": 30, "damage_rate": 90, "height": "mid", "air": true, "launch": true},
+  "heavy_smash": {"name": "Heavy Smash", "base_cost": 0, "damage_rate": 130, "height": "mid", "air": false, "overhead": true},
+  "dash_strike": {"name": "Dash Strike", "base_cost": 40, "damage_rate": 90, "height": "mid", "air": true, "moves_attacker": true},
+  "fireball": {"name": "Fireball", "base_cost": 40, "damage_rate": 80, "height": "high", "air": true, "projectile": true, "max_active": 1},
+  "spinning_slash": {"name": "Spinning Slash", "base_cost": 50, "damage_rate": 80, "height": "mid", "air": true, "hits_behind": true}
+}
