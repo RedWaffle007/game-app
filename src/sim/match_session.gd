@@ -75,6 +75,17 @@ func snapshot() -> Dictionary:
 	}
 
 
+func restore_snapshot(state: Dictionary) -> void:
+	phase = str(state["phase"])
+	round_number = int(state["round_number"])
+	round_ticks_left = int(state["round_ticks_left"])
+	first_rounds_won = int(state["first_rounds_won"])
+	second_rounds_won = int(state["second_rounds_won"])
+	last_round_winner = str(state["last_round_winner"])
+	match_winner = str(state["match_winner"])
+	simulation.restore_snapshot(state["simulation"])
+
+
 func _hit_damage(step: Dictionary, key: String) -> int:
 	return int(step["attacks"][key].get("damage", 0)) + int(step["projectiles"][key].get("damage", 0))
 

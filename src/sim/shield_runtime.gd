@@ -84,3 +84,12 @@ func snapshot() -> Dictionary:
 		"recovery_ticks_left": recovery_ticks_left,
 		"active": active,
 	}
+
+
+func restore_snapshot(state: Dictionary) -> void:
+	strength = int(state["strength"])
+	cooldown_ticks_left = int(state["cooldown_ticks_left"])
+	contacts_left = int(state["contacts_left"])
+	active_ticks_left = int(state["active_ticks_left"])
+	recovery_ticks_left = int(state["recovery_ticks_left"])
+	active = bool(state["active"])

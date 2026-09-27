@@ -266,6 +266,36 @@ func snapshot() -> Dictionary:
 	}
 
 
+func restore_snapshot(state: Dictionary) -> void:
+	name = str(state["name"])
+	hp = int(state["hp"])
+	x = int(state["x"])
+	y = int(state["y"])
+	ducking = bool(state["ducking"])
+	facing = int(state["facing"])
+	round_start_x = int(state["round_start_x"])
+	round_start_facing = int(state["round_start_facing"])
+	moves = state["moves"].duplicate(true)
+	move_order.clear()
+	for move_id: Variant in state["move_order"]:
+		move_order.append(str(move_id))
+	active_projectile = state["active_projectile"].duplicate(true)
+	active_effects = state["active_effects"].duplicate(true)
+	last_used_move_id = str(state["last_used_move_id"])
+	windup_move_id = str(state["windup_move_id"])
+	control_ticks_left = int(state["control_ticks_left"])
+	control_immunity_ticks_left = int(state["control_immunity_ticks_left"])
+	airborne_ticks_left = int(state["airborne_ticks_left"])
+	airborne_hits_taken = int(state["airborne_hits_taken"])
+	vertical_speed = int(state["vertical_speed"])
+	jumps_used = int(state["jumps_used"])
+	dash_ticks_left = int(state["dash_ticks_left"])
+	dash_direction = int(state["dash_direction"])
+	combo_source = str(state["combo_source"])
+	combo_hits_taken = int(state["combo_hits_taken"])
+	shield.restore_snapshot(state["shield"])
+
+
 func _apply_control(application: Dictionary) -> void:
 	var duration := maxi(0, int(application.get("duration_ticks", 0)))
 	control_ticks_left = duration

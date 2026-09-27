@@ -27,6 +27,12 @@ playtest scene with keyboard and on-screen multi-touch controls:
 - a dependency-free headless GDScript test suite
 - a 3D capsule arena with a deterministic training bot and live match HUD
 - safe-area-aware touch controls for movement, attacks, shield, and round transitions
+- move charges and shield recovery shown on their touch buttons
+- a BOT/DUMMY toggle for passive practice and a live FPS readout
+- lightweight capsule poses for walking, ducking, dashing, shielding, and taking damage
+- active effect timers shown beneath both health bars
+- a BUILD control to cycle through the five included player presets
+- an experimental LAN host/join path for two phones on the same Wi-Fi
 
 Open the project in Godot and press F6 on `src/main.tscn`, or run the project
 with F5. This first interactive slice uses keyboard controls:
@@ -38,11 +44,49 @@ with F5. This first interactive slice uses keyboard controls:
 | Space / F | Basic attack / shield |
 | 1–4 | The balanced preset's four moves |
 | Enter / R | Next round / rematch after match end |
+| T | Toggle bot / passive training dummy |
+| B | Cycle player preset and start a fresh match |
 
-The opponent uses the Poisoner preset. The on-screen directional pad supports
-sliding and simultaneous attack presses; its dash button stands in for the
-planned joystick flick. You can click the controls with a mouse in the editor.
+The opponent uses the Poisoner preset, with a BOT/DUMMY touch toggle for passive
+practice. The BUILD button cycles through Balanced, Glass Cannon, Poisoner,
+Pure Nuke, and Turtle, starting a fresh match. The left touch joystick moves sideways,
+pushes up to jump (again for double jump), holds down to duck, and dashes on a
+quick horizontal flick. The right-hand buttons accept simultaneous presses.
+You can use the controls with a mouse in the editor. Move buttons show remaining
+charges, and the shield button shows its recovery state.
+
+The LAN button opens a Host/Join menu. The host phone runs the authoritative
+match on UDP port 27185; the joining phone enters the host's local IP address.
+Both phones choose a BUILD preset before connecting. A three-second reveal
+shows both builds before the round clock starts. LAN play is in the source
+but has not been built or tested on devices yet.
 Phone deployment and animation are still pending.
+
+### Android debug build
+
+The project has a landscape, arm64 debug APK preset that includes the JSON
+build and catalog data the game loads at runtime. The Godot 4.7.2 Flatpak on
+this development machine has matching Android export templates installed.
+On another machine, install templates matching the editor via **Editor →
+Manage Export Templates**, then set these under **Editor Settings → Export →
+Android**:
+
+- Java SDK Path: `/usr/lib/sdk/openjdk17/jvm/openjdk-17` (the installed Flatpak OpenJDK 17 extension)
+- Android SDK Path: `/home/smbilal/Android` on this development machine
+
+Then run `./scripts/export_android_debug.sh`. It writes the ignored
+`builds/game-debug.apk`. With USB debugging enabled and a phone listed by
+`adb devices`, install it with:
+
+```sh
+/home/smbilal/Android/platform-tools/adb install -r builds/game-debug.apk
+```
+
+The debug preset contains no release key. Keep any future release keystore and
+password outside the repository. The APK was built, signature-verified, and
+installed on a connected arm64 phone on 2026-09-27. The user reported that the
+touch controls feel fine; frame rate and heat remain unmeasured. See [Godot's Android export guide](https://docs.godotengine.org/en/4.7/tutorials/export/exporting_for_android.html)
+for the required tooling and setup.
 
 Arena distances are integer simulation units. The current arena bounds and
 close/long range targets are tuning defaults in `GameConfig`. The smoke

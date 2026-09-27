@@ -96,6 +96,17 @@ func snapshot() -> Dictionary:
 	}
 
 
+func restore_snapshot(state: Dictionary) -> void:
+	tick_index = int(state["tick"])
+	hit_stop_ticks_left = int(state["hit_stop_ticks_left"])
+	first.restore_snapshot(state["first"])
+	second.restore_snapshot(state["second"])
+	pending[0] = state["pending"][0].duplicate(true)
+	pending[1] = state["pending"][1].duplicate(true)
+	remaining[0] = int(state["remaining"][0])
+	remaining[1] = int(state["remaining"][1])
+
+
 func _store_press(index: int, input: Dictionary) -> void:
 	var action: Dictionary = input.get("action", {})
 	if not action.is_empty():
